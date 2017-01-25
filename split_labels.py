@@ -1,5 +1,5 @@
 """
-	This script takes in a set of labels.
+	This script takes in a set of labels sorted by subject ID
 	It splits the labels into train/dev/test sets
 """
 import csv

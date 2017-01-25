@@ -1,7 +1,7 @@
 """
-	This script reads the output of get_notes.py and builds a vocabulary of terms of size 40k
-	Size of vocab-10 dataset: 1522558 rows
-	Size of vocab-100 dataset: 2047967 rows
+	This script reads a sorted training dataset and builds a vocabulary of terms of size 40k
+	Size of label-10 dataset: 1522558 rows
+	Size of label-100 dataset: 2047967 rows
 	Output: txt file with the 40k words
 """
 import csv
@@ -22,7 +22,7 @@ def main(dataset):
 			3. Calculate tf-idf scores, keep list of top VOCAB_SIZE terms
 			4. Drop all rows corresponding to non-top-VOCABS_SIZE terms
 	"""
-	with open('../mimicdata/notes_' + dataset + '.csv', 'r') as csvfile:
+	with open('../mimicdata/notes_' + dataset + '_train.csv', 'r') as csvfile:
 		reader = csv.reader(csvfile)
 
 		#0. read in data
@@ -112,9 +112,6 @@ def main(dataset):
 		print("sampling of the kept terms")
 		print(kept_terms[-10:])
 		print(scores[-10:])
-		#slice 'em
-		print("reducing matrix to top 40k")
-		C = C[inds]
 
 
 

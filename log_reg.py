@@ -48,9 +48,10 @@ def construct_csr_matrix(notefile):
 		data = []
 		vocab = {}
 
+		print("Processing",end="")
 		for row in reader:
 			if i % 10000 == 0:
-				print(str(i) + " rows processed")
+				print(".",end="")
 			subject_id = int(row[0])
 			if subject_id != cur_id:
 				subj_inds.append(len(indices))
