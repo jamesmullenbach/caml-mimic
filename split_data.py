@@ -23,6 +23,7 @@ def main(Y, vocab_min):
 	#select which indices go to which set
 	print("finding unique subject ids")
 	num_subjects = len(pd.read_csv('../mimicdata/notes_' + str(Y) + '_sorted.csv', usecols=['SUBJECT_ID'], squeeze=True).unique())
+	print("num subjects: " + str(num_subjects))
 
 	#create and write headers for train, dev, test
 	train_file = open('../mimicdata/notes_' + str(Y) + '_train.csv', 'w')
@@ -50,9 +51,9 @@ def main(Y, vocab_min):
 				subj_seen += 1
 				cur_subj = subj_id
 
-			if subj_id < num_subjects * TRAIN_PCT:
+			if subj_seen < num_subjects * TRAIN_PCT:
 				train_file.write(','.join([row[1], row[2], filtered]) + "\n")
-			elif subj_id >= num_subjects * TRAIN_PCT and subj_id < num_subjects * (TRAIN_PCT + DEV_PCT):
+			elif subj_seen >= num_subjects * TRAIN_PCT and subj_seen < num_subjects * (TRAIN_PCT + DEV_PCT):
 				dev_file.write(','.join([row[1], row[2], filtered]) + "\n")
 			else:
 				test_file.write(','.join([row[1], row[2], filtered]) + "\n")

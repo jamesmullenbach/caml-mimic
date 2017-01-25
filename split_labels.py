@@ -16,17 +16,17 @@ def main(Y):
 
 	#select which indices go to which set
 	print("finding unique subject ids")
-	num_subjects = len(pd.read_csv('../mimicdata/labels_' + str(Y) + '.csv', usecols=['SUBJECT_ID'], squeeze=True).unique())
+	num_subjects = len(pd.read_csv('../mimicdata/labels_' + str(Y) + '_filtered.csv', usecols=['SUBJECT_ID'], squeeze=True).unique())
 
 	#create and write headers for train, dev, test
 	train_file = open('../mimicdata/labels_' + str(Y) + '_train.csv', 'w')
 	dev_file = open('../mimicdata/labels_' + str(Y) + '_dev.csv', 'w')
 	test_file = open('../mimicdata/labels_' + str(Y) + '_test.csv', 'w')
 	train_file.write(','.join(['SUBJECT_ID', 'ICD9_CODE']) + "\n")
-	dev_file.write(','.join(['SUBJECT_ID', 'CHARTTIME']) + "\n")
-	test_file.write(','.join(['SUBJECT_ID', 'CHARTTIME']) + "\n")
+	dev_file.write(','.join(['SUBJECT_ID', 'ICD9_CODE']) + "\n")
+	test_file.write(','.join(['SUBJECT_ID', 'ICD9_CODE']) + "\n")
 
-	with open('../mimicdata/labels_' + str(Y) + '.csv', 'r') as notesfile:
+	with open('../mimicdata/labels_' + str(Y) + '_filtered.csv', 'r') as notesfile:
 		reader = csv.reader(notesfile)
 		next(reader)
 		i = 0

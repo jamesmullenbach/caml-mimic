@@ -43,12 +43,14 @@ def main(dataset):
 		for row in reader:
 			if i % 10000 == 0:
 				print(str(i) + " of " + total_rows[dataset] + " read")
-			text = row[1]
+			text = row[2]
+			numwords = 0
 			for term in text.split():
 				#put term in vocab if it's not there. else, get the index
 				index = vocab.setdefault(term, len(vocab))
 				indices.append(index)
 				data.append(1)
+				numwords += 1
 			#record where the next note starts
 			note_inds.append(len(indices))
 			indset = set(indices[note_inds[-2]:note_inds[-1]])
@@ -118,7 +120,7 @@ def main(dataset):
 
 
 if __name__ == "__main__":
-	if sys.argv[1] not in ["10", "100", "full"]:
+	if len(sys.argv) < 2 or sys.argv[1] not in ["10", "100", "full"]:
 		print("usage: python build_vocab.py [10|100|full]")
 		sys.exit(0)
 	main(sys.argv[1])

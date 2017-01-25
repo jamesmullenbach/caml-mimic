@@ -29,6 +29,7 @@ def main(Y):
 	print("processing notes file")
 	with open('../mimicdata/NOTEEVENTS.csv', 'r') as csvfile:
 		with open('../mimicdata/notes_' + str(Y) + '.csv', 'w') as outfile:
+			outfile.write(','.join(['SUBJECT_ID', 'CHARTTIME', 'TEXT']) + '\n')
 			notereader = csv.reader(csvfile)
 			next(notereader)
 			i = 0
@@ -42,7 +43,7 @@ def main(Y):
 					text = '"' + ' '.join(tokens) + '"'
 					if i % 10000 == 0:
 						print(text[:80])
-					outfile.write(','.join([line[1], text]) + '\n')
+					outfile.write(','.join([line[1], line[4], text]) + '\n')
 				i += 1
 
 if __name__ == "__main__":
