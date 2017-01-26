@@ -1,9 +1,9 @@
 """
 	This script takes in a set of notes and creates a sparse matrix for them
 		The notes should already be in SUBJECT_ID/CHARTTIME sorted order, though order isn't important for this baseline
-	It also takes in the corresponding codes for each patient
-	Does logistic regression to predict codes from the text
-		One LR classifier for each code
+	It also takes in the corresponding codes for each patient and creates a sklearn-ready matrix of labels
+
+	Mostly been using the construct_csr_matrix and construct_label_lists within jupyter
 """
 import csv
 import numpy as np

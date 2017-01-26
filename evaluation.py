@@ -12,7 +12,9 @@ def accuracy(yhat, y):
 	return sum(intersect_size(yhat, y) / union_size(yhat, y)) / y.shape[0]
 
 def precision(yhat, y):
-	return sum(intersect_size(yhat, y) / yhat.sum(axis=1)) / y.shape[0]
+	num = intersect_size(yhat, y) / yhat.sum(axis=1)
+	num = [0 if np.isnan(n) else n for n in num]
+	return sum(num) / y.shape[0]
 
 def recall(yhat, y):
 	return sum(intersect_size(yhat, y) / y.sum(axis=1)) / y.shape[0]
