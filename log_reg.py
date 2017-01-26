@@ -6,6 +6,7 @@
 		One LR classifier for each code
 """
 import csv
+import numpy as np
 import os
 import sys
 
@@ -16,7 +17,7 @@ from sklearn.linear_model import LogisticRegression
 def main(Y):
 
 	print("creating sparse matrix")
-	notefile = '../mimicdata/notes_' + str(Y) + '_train.csv'
+	notefile = '../mimicdata/notes_' + str(Y) + '_train_ind.csv'
 	X = construct_csr_matrix(notefile)
 
 	print(X.getrow(0).toarray())
@@ -46,7 +47,6 @@ def construct_csr_matrix(notefile):
 		subj_inds = [0]
 		indices = []
 		data = []
-		vocab = {}
 
 		print("Processing",end="")
 		for row in reader:
@@ -56,9 +56,9 @@ def construct_csr_matrix(notefile):
 			if subject_id != cur_id:
 				subj_inds.append(len(indices))
 				cur_id = subject_id
-			text = row[2]
+			text = row[1]
 			for word in text.split():
-				index = vocab.setdefault(word, len(vocab))
+				index = int(word)
 				indices.append(index)
 				data.append(1)
 			i += 1
@@ -69,8 +69,6 @@ def construct_label_lists(labelfile, Y, num_insts):
 	"""
 		Returns: a length-Y list of label lists, such that each list can be passed into a logreg classifier
 	"""
-	#read once to make a set of labels
-	labels = []
 	yy = [[0] *  num_insts for _ in range(Y)]
 	with open(labelfile, 'r') as labelfile:
 		reader = csv.reader(labelfile)
@@ -84,14 +82,11 @@ def construct_label_lists(labelfile, Y, num_insts):
 				subjs_seen += 1
 				cur_subj = subj
 
-			code = row[1]
-			if code not in labels:
-				labels.append(code)
-			i = labels.index(code)
+			i = int(row[1])
 			yy[i][subjs_seen-1] = 1
 
-	return yy
-
+	#turn it into a np array for use in multilabel classification
+	return np.array(yy).transpose()
 
 
 if __name__ == "__main__":

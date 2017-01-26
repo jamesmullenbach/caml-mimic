@@ -1,11 +1,12 @@
 """
 	This script takes in a set of labels sorted by subject ID
-	It splits the labels into train/dev/test sets
+	It splits the labels into train/dev/test sets, replacing the code by an index for the code
 """
 import csv
 import os
 import sys
 
+import numpy as np
 import pandas as pd
 
 TRAIN_PCT = 0.5
@@ -17,6 +18,9 @@ def main(Y):
 	#select which indices go to which set
 	print("finding unique subject ids")
 	num_subjects = len(pd.read_csv('../mimicdata/labels_' + str(Y) + '_filtered.csv', usecols=['SUBJECT_ID'], squeeze=True).unique())
+	print("finding unique codes and building lookup table")
+	codes = pd.read_csv('../mimicdata/labels_' + str(Y) + '_filtered.csv', usecols=['ICD9_CODE'], squeeze=True).unique()
+	c_dict = {code: np.where(codes==code)[0][0] for code in codes}
 
 	#create and write headers for train, dev, test
 	train_file = open('../mimicdata/labels_' + str(Y) + '_train.csv', 'w')
@@ -42,12 +46,14 @@ def main(Y):
 				subj_seen += 1
 				cur_subj = subj_id
 
+			code_ind = c_dict[int(row[1])]
+
 			if subj_seen < num_subjects * TRAIN_PCT:
-				train_file.write(','.join(row) + "\n")
+				train_file.write(','.join([row[0], str(code_ind)]) + "\n")
 			elif subj_seen >= num_subjects * TRAIN_PCT and subj_seen < num_subjects * (TRAIN_PCT + DEV_PCT):
-				dev_file.write(','.join(row) + "\n")
+				dev_file.write(','.join([row[0], str(code_ind)]) + "\n")
 			else:
-				test_file.write(','.join(row) + "\n")
+				test_file.write(','.join([row[0], str(code_ind)]) + "\n")
 			i += 1
 
 if __name__ == "__main__":
