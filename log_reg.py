@@ -42,9 +42,9 @@ def construct_csr_matrix(notefile):
 		reader = csv.reader(notesfile)
 		next(reader)
 		i = 0
-		cur_id = 2
+		cur_id = 0
 
-		subj_inds = [0]
+		subj_inds = []
 		indices = []
 		data = []
 
@@ -62,6 +62,7 @@ def construct_csr_matrix(notefile):
 				indices.append(index)
 				data.append(1)
 			i += 1
+		subj_inds.append(len(indices))
 
 	return csr_matrix((data, indices, subj_inds))
 
