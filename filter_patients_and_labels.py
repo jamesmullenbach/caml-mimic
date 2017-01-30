@@ -12,6 +12,7 @@ import pandas as pd
 def main(Y):
 
 	note_subjects = pd.read_csv('../mimicdata/notes_' + str(Y) + '_sorted.csv', usecols=['SUBJECT_ID'], squeeze=True).unique()
+	print(len(note_subjects))
 
 	print("Filtering patients list")
 	with open('../mimicdata/patients_' + str(Y) + '.csv', 'r') as patientfile:
@@ -29,11 +30,11 @@ def main(Y):
 		with open('../mimicdata/labels_' + str(Y) + '_filtered.csv', 'w') as filteredfile:
 			reader = csv.reader(labelfile)
 			next(reader)
-			filteredfile.write('SUBJECT_ID,ICD9_CODE\n')
+			filteredfile.write('SUBJECT_ID,ICD9_CODE,ADMITTIME,DISCHTIME\n')
 			for row in reader:
 				subj_id = int(row[0])
 				if subj_id in note_subjects:
-					filteredfile.write(','.join([str(subj_id), row[1]]) + '\n')
+					filteredfile.write(','.join(row) + '\n')
 
 		
 
