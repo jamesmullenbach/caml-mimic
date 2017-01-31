@@ -6,9 +6,26 @@ import os
 import numpy as np
 import sys
 
-from keras.layers import Input, Dense, Dropout, Activation, Embedding, Reshape
-from keras.layers.convolutional import Convolutional1D
-from log_reg import construct_label_lists
+import evaluation
+
+from keras.layers import Activation, Embedding
+from keras.layers.convolutional import Convolution1D
+from keras.layers.pooling import MaxPooling1D
+from keras.models import Sequential
+from keras.optimizers import Adam
+
+#Embedding constants
+VOCAB_SIZE = 40000
+EMBEDDING_SIZE = 50
+DROPOUT_EMBED = 0.2
+
+#Convolution constants
+FILTER_SIZE = 3
+STRIDE = 1
+
+#training constants
+BATCH_SIZE = 10
+NUM_EPOCHS = 10
 
 def main(Y):
 	"""
@@ -16,14 +33,26 @@ def main(Y):
 	"""
 	(X_tr, Y_tr), (X_dv, Y_dv) = load_data(Y)
 
-def build_model():
-	model = None
+	model = build_model()
+
+
+def build_model(Y):
+	model = Sequential()
+	#no input length bc it's not constant
+	model.add(Embedding(VOCAB_SIZE, EMBEDDING_SIZE, dropout=DROPOUT_EMBED))
+	model.add(Convolution1D(Y, FILTER_SIZE, activation='tanh'))
+	model.add(MaxPooling1D(pool_length=FILTER_SIZE, stride=STRIDE))
+	model.add(Activation('sigmoid'))
+	model.compile(optimizer=Adam(), loss='binary_crossentropy')
 	return model
 
-def train(model, X_tr, Y_tr):
-	pass
+def train(model, X_tr, Y_tr, X_dv, Y_dv):
+	model.fit(X_tr, Y_tr, batch_size=BATCH_SIZE, nb_epoch=NUM_EPOCHS, validation_data=(X_dv, Y_dv))
 
 def evaluate(model, X_dv, Y_dv):
+	preds = model.predict(X_dv)
+	preds[preds >= 0.5] = 1
+	preds[preds < 0.5] = 0
 	return acc,prec,rec,f1
 
 def load_data(Y):
@@ -39,46 +68,37 @@ def load_data(Y):
 	"""
 	X_tr, Y_tr, X_dv, Y_dv = [], [], [], []
 
-	notes_filename = '../mimicdata/notes_' + str(Y) + '_train_ind.csv'
-	labels_filename = '../mimicdata/labels_' + str(Y) + '_train.csv'
+	notes_filename = '../mimicdata/notes_' + str(Y) + '_train_single.csv'
 	with open(notes_filename, 'r') as notesfile:
-		with open(labels_filename, 'r') as labelsfile:
-			#go thru the notes file
-			#when you see a new subject id, build its label vector from labels file
-			#when you see the same subject id as before, add a copy of the label vector to Y
-			cur_subj = 0
-			cur_y_vec = [0] * Y
-			note_reader = csv.reader(notesfile)
-			label_reader = csv.reader(labelsfile)
+		#go thru the notes file
+		#an instance is literally just the array of words, and array of labels (turned into indicator array)
+		note_reader = csv.reader(notesfile)
 
-			next(note_reader)
-			next(label_reader)
+		next(note_reader)
 
-			for row in note_reader:
-				subj_id = int(row[0])
-				text = row[1]
-				if subj_id != cur_subj:
-					#make new label vector from the labelsfile
-					cur_y_vec = [0] * Y
-					found_next = False
-					while not found_next:
-						l_row = next(label_reader)
-						subj = int(l_row[0])
-						if subj == cur_subj:
-							code = int(l_row[1])
-							cur_y_vec[code] = 1
-						else:
-							if sum(cur_y_vec) > 0:
-								found_next = True
-							else:
-								print("you fucked up")
+		for row in note_reader:
+			text = row[1]
+			labels = row[2:]
+			x_vec = [int(w) for w in text.split()]
+			label_ints = [int(l) for l in labels]
+			y_vec = [1 if i in label_ints else 0 for i in range(Y)]
+			X_tr.append(x_vec)
+			Y_tr.append(y_vec)
 
-				x_vec = [int(w) for w in text.split()]
-				X_tr.append(x_vec)
-				Y_tr.append(cur_y_vec)
+	notes_filename = notes_filename.replace('train', 'dev')
+	with open(notes_filename, 'r') as notesfile:
+		note_reader = csv.reader(notesfile)
+		next(note_reader)
+		for row in note_reader:
+			text = row[1]
+			labels = row[2:]
+			x_vec = [int(w) for w in text.split()]
+			label_ints = [int(l) for l in labels]
+			y_vec = [1 if i in label_ints else 0 for i in range(Y)]
+			X_dv.append(x_vec)
+			Y_dv.append(y_vec)
 
-	return (X_tr, Y_tr), (X_dv, Y_dv)
-
+	return (np.array(X_tr), np.array(Y_tr)), (np.array(X_dv), np.array(Y_dv))
 
 
 if __name__ == "__main__":

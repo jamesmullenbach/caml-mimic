@@ -90,8 +90,6 @@ def next_labels(labelsfile):
 	yield cur_subj, cur_labels, cur_admit_time, cur_disch_time
 	
 
-
-
 if __name__ == "__main__":
 	if len(sys.argv) < 2:
 		print("usage: python " + str(os.path.basename(__file__) + " [|Y|]"))

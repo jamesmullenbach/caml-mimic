@@ -28,12 +28,13 @@ def main(Y, vocab_min):
 	vocab_filter(vocab, v_dict, c_dict, 'dev')
 	vocab_filter(vocab, v_dict, c_dict, 'test')
 
-	#make debugging downstream easier
+	#write vocab/label lookups to files to make debugging downstream easier
 	print("writing lookup tables")
 	with open("../mimicdata/vocab_lookup_" + str(vocab_min) + ".csv", 'w') as vocabfile:
 		vocabfile.write(','.join(['ID', 'WORD']) + "\n")
 		for word, ind in iter(v_dict.items()):
 			vocabfile.write(','.join([str(ind), word]) + "\n")
+
 	with open("../mimicdata/label_lookup_" + str(Y) + ".csv", 'w') as labelfile:
 		labelfile.write(','.join(['ID', 'LABEL']) + "\n")
 		for label, ind in iter(c_dict.items()):
