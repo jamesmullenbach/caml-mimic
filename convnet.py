@@ -13,6 +13,7 @@ from keras.layers.convolutional import Convolution1D
 from keras.layers.pooling import MaxPooling1D
 from keras.models import Sequential
 from keras.optimizers import Adam
+from keras.preprocessing import sequence
 
 #Embedding constants
 VOCAB_SIZE = 40000
@@ -27,21 +28,32 @@ STRIDE = 1
 BATCH_SIZE = 10
 NUM_EPOCHS = 10
 
+#others
+MAX_LENGTH = 400
+
 def main(Y):
 	"""
 		main function which sequentially loads the data, builds the model, trains, and evaluates
 	"""
 	(X_tr, Y_tr), (X_dv, Y_dv) = load_data(Y)
 
+	X_tr = sequence.pad_sequences(X_tr, maxlen=MAX_LENGTH)
+	X_dv = sequence.pad_sequences(X_dv, maxlen=MAX_LENGTH)
+
 	model = build_model()
+
+	train(model, X_tr, Y_tr, X_dv, Y_dv)
+	evaluate(model, X_dv, Y_dv)
 
 
 def build_model(Y):
 	model = Sequential()
 	#no input length bc it's not constant
-	model.add(Embedding(VOCAB_SIZE, EMBEDDING_SIZE, dropout=DROPOUT_EMBED))
+	model.add(Embedding(VOCAB_SIZE, EMBEDDING_SIZE, dropout=DROPOUT_EMBED, input_length=MAX_LENGTH))
 	model.add(Convolution1D(Y, FILTER_SIZE, activation='tanh'))
 	model.add(MaxPooling1D(pool_length=FILTER_SIZE, stride=STRIDE))
+	model.add(Dense(Y))
+	model.add(Dropout(0.2))
 	model.add(Activation('sigmoid'))
 	model.compile(optimizer=Adam(), loss='binary_crossentropy')
 	return model
@@ -53,6 +65,8 @@ def evaluate(model, X_dv, Y_dv):
 	preds = model.predict(X_dv)
 	preds[preds >= 0.5] = 1
 	preds[preds < 0.5] = 0
+
+	acc,prec,rec,f1 = evalation.all_metrics(preds, Y_dv)
 	return acc,prec,rec,f1
 
 def load_data(Y):
