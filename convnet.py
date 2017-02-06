@@ -8,9 +8,9 @@ import sys
 
 import evaluation
 
-from keras.layers import Activation, Embedding
+from keras.layers import Activation, Dense, Dropout, Embedding
 from keras.layers.convolutional import Convolution1D
-from keras.layers.pooling import GlobalMaxPooling1D, MaxPooling1D
+#from keras.layers.pooling import GlobalMaxPooling1D, MaxPooling1D
 from keras.models import Sequential
 from keras.optimizers import Adam
 from keras.preprocessing import sequence
@@ -36,13 +36,13 @@ def main(Y):
 	"""
 		main function which sequentially loads the data, builds the model, trains, and evaluates
 	"""
-	(X_tr, Y_tr), (X_dv, Y_dv) = load_data(Y)
+	(X_tr, Y_tr), (X_dv, Y_dv) = load_data(Y, notebook=False)
 
 	print("padding sequences")
 	X_tr = sequence.pad_sequences(X_tr, maxlen=MAX_LENGTH)
 	X_dv = sequence.pad_sequences(X_dv, maxlen=MAX_LENGTH)
 
-	model = build_model()
+	model = build_model(Y)
 
 	print("training model")
 	hist = train(model, X_tr, Y_tr, X_dv, Y_dv)
@@ -51,16 +51,23 @@ def main(Y):
 	print("accuracy, precision, recall, f-measure")
 	print(acc, prec, rec, f1)
 
-def build_model(Y):
+def build_model(Y, old_version=True):
 	model = Sequential()
 	#no input length bc it's not constant
 	model.add(Embedding(VOCAB_SIZE, EMBEDDING_SIZE, dropout=DROPOUT_EMBED, input_length=MAX_LENGTH))
 	model.add(Convolution1D(Y, FILTER_SIZE, activation='tanh'))
-	model.add(GlobalMaxPooling1D())
+	if old_version:
+		#http://stats.stackexchange.com/questions/257321/what-is-global-max-pooling-layer-and-what-is-its-advantage-over-maxpooling-layer
+		from keras.layers import MaxPooling1D, Reshape
+		model.add(MaxPooling1D(pool_length=MAX_LENGTH-FILTER_SIZE+1))
+		model.add(Reshape((Y,)))
+	else:
+		from keras.layers.pooling import GlobalMaxPooling1D
+		model.add(GlobalMaxPooling1D())
 	model.add(Dense(Y))
 	model.add(Dropout(DROPOUT_DENSE))
 	model.add(Activation('sigmoid'))
-	model.compile(optimizer=Adam(), loss='binary_crossentropy')
+	model.compile(optimizer='rmsprop', loss='binary_crossentropy')
 	return model
 
 def built_model_multiwindow(Y, s, l, step):
@@ -95,10 +102,10 @@ def evaluate(model, X_dv, Y_dv):
 	preds[preds >= 0.5] = 1
 	preds[preds < 0.5] = 0
 
-	acc,prec,rec,f1 = evalation.all_metrics(preds, Y_dv)
+	acc,prec,rec,f1 = evaluation.all_metrics(preds, Y_dv)
 	return acc,prec,rec,f1
 
-def load_data(Y):
+def load_data(Y, notebook=True):
 	"""
 		For the convnet, each note will be a separate instance, rather than each subject
 		Adapt the methods from log_reg for this
@@ -118,7 +125,10 @@ def load_data(Y):
 		#go thru the notes file
 		#an instance is literally just the array of words, and array of labels (turned into indicator array)
 		if i % 10000 == 0:
-			print ".",
+			if notebook:
+				print ".",
+			else:
+				print str(i) + " done"
 		note_reader = csv.reader(notesfile)
 
 		next(note_reader)
@@ -132,13 +142,17 @@ def load_data(Y):
 			X_tr.append(x_vec)
 			Y_tr.append(y_vec)
 		i += 1
-
+	print
+	
 	notes_filename = notes_filename.replace('train', 'dev')
 	print "Processing dev",
 	i = 0
 	with open(notes_filename, 'r') as notesfile:
 		if i % 10000 == 0:
-			print ".",
+			if notebook:
+				print ".",
+			else:
+				print str(i) + " done"
 		note_reader = csv.reader(notesfile)
 		next(note_reader)
 		for row in note_reader:
@@ -150,7 +164,7 @@ def load_data(Y):
 			X_dv.append(x_vec)
 			Y_dv.append(y_vec)
 		i += 1
-
+	print
 	return (np.array(X_tr), np.array(Y_tr)), (np.array(X_dv), np.array(Y_dv))
 
 
