@@ -38,12 +38,15 @@ def main(Y):
 	"""
 	(X_tr, Y_tr), (X_dv, Y_dv) = load_data(Y)
 
+	print("padding sequences")
 	X_tr = sequence.pad_sequences(X_tr, maxlen=MAX_LENGTH)
 	X_dv = sequence.pad_sequences(X_dv, maxlen=MAX_LENGTH)
 
 	model = build_model()
 
+	print("training model")
 	hist = train(model, X_tr, Y_tr, X_dv, Y_dv)
+	print("evaluating on dev")
 	acc,prec,rec,f1 = evaluate(model, X_dv, Y_dv)
 	print("accuracy, precision, recall, f-measure")
 	print(acc, prec, rec, f1)
@@ -59,6 +62,29 @@ def build_model(Y):
 	model.add(Activation('sigmoid'))
 	model.compile(optimizer=Adam(), loss='binary_crossentropy')
 	return model
+
+def built_model_multiwindow(Y, s, l, step):
+	from keras.layers import Input, merge
+	from keras.models import Model
+	model_input = Input(shape=(MAX_LENGTH,))
+	embed = Embedding(VOCAB_SIZE, EMBEDDING_SIZE, dropout=DROPOUT_EMBED, input_length=MAX_LENGTH)(model_input)
+
+	convs = []
+	pools = []
+	for i,sz in enumerate(range(s, l+1, step)):
+		convs.append(Convolution1D(Y, sz, activation='tanh')(embed))
+		pools.append(GlobalMaxPooling1D())(convs[i])
+	pool1 = GlobalMaxPooling1D()(conv1)
+
+	merged = merge(pools, mode='concat', concat_axis=1) 
+
+	dense = Dense(Y)(merged)
+	dropout = Dropout(DROPOUT_DENSE)(dense)
+	activation = Activation('sigmoid')(dropout)
+	cnn_multi = Model(input=model_input, output=activation)
+	
+	cnn_multi.compile(optimizer='rmsprop', loss='binary_crossentropy')
+	return cnn_multi
 
 def train(model, X_tr, Y_tr, X_dv, Y_dv):
 	hist = model.fit(X_tr, Y_tr, batch_size=BATCH_SIZE, nb_epoch=NUM_EPOCHS, validation_data=(X_dv, Y_dv))
@@ -86,9 +112,13 @@ def load_data(Y):
 	X_tr, Y_tr, X_dv, Y_dv = [], [], [], []
 
 	notes_filename = '../mimicdata/notes_' + str(Y) + '_train_single.csv'
+	print "Processing train",
+	i = 0
 	with open(notes_filename, 'r') as notesfile:
 		#go thru the notes file
 		#an instance is literally just the array of words, and array of labels (turned into indicator array)
+		if i % 10000 == 0:
+			print ".",
 		note_reader = csv.reader(notesfile)
 
 		next(note_reader)
@@ -101,9 +131,14 @@ def load_data(Y):
 			y_vec = [1 if i in label_ints else 0 for i in range(Y)]
 			X_tr.append(x_vec)
 			Y_tr.append(y_vec)
+		i += 1
 
 	notes_filename = notes_filename.replace('train', 'dev')
+	print "Processing dev",
+	i = 0
 	with open(notes_filename, 'r') as notesfile:
+		if i % 10000 == 0:
+			print ".",
 		note_reader = csv.reader(notesfile)
 		next(note_reader)
 		for row in note_reader:
@@ -114,6 +149,7 @@ def load_data(Y):
 			y_vec = [1 if i in label_ints else 0 for i in range(Y)]
 			X_dv.append(x_vec)
 			Y_dv.append(y_vec)
+		i += 1
 
 	return (np.array(X_tr), np.array(Y_tr)), (np.array(X_dv), np.array(Y_dv))
 
