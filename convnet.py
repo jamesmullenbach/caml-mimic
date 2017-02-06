@@ -10,7 +10,7 @@ import evaluation
 
 from keras.layers import Activation, Embedding
 from keras.layers.convolutional import Convolution1D
-from keras.layers.pooling import MaxPooling1D
+from keras.layers.pooling import GlobalMaxPooling1D, MaxPooling1D
 from keras.models import Sequential
 from keras.optimizers import Adam
 from keras.preprocessing import sequence
@@ -19,14 +19,15 @@ from keras.preprocessing import sequence
 VOCAB_SIZE = 40000
 EMBEDDING_SIZE = 50
 DROPOUT_EMBED = 0.2
+DROPOUT_DENSE = 0.2
 
 #Convolution constants
 FILTER_SIZE = 3
 STRIDE = 1
 
 #training constants
-BATCH_SIZE = 10
-NUM_EPOCHS = 10
+BATCH_SIZE = 32
+NUM_EPOCHS = 5
 
 #others
 MAX_LENGTH = 400
@@ -42,24 +43,26 @@ def main(Y):
 
 	model = build_model()
 
-	train(model, X_tr, Y_tr, X_dv, Y_dv)
-	evaluate(model, X_dv, Y_dv)
-
+	hist = train(model, X_tr, Y_tr, X_dv, Y_dv)
+	acc,prec,rec,f1 = evaluate(model, X_dv, Y_dv)
+	print("accuracy, precision, recall, f-measure")
+	print(acc, prec, rec, f1)
 
 def build_model(Y):
 	model = Sequential()
 	#no input length bc it's not constant
 	model.add(Embedding(VOCAB_SIZE, EMBEDDING_SIZE, dropout=DROPOUT_EMBED, input_length=MAX_LENGTH))
 	model.add(Convolution1D(Y, FILTER_SIZE, activation='tanh'))
-	model.add(MaxPooling1D(pool_length=FILTER_SIZE, stride=STRIDE))
+	model.add(GlobalMaxPooling1D())
 	model.add(Dense(Y))
-	model.add(Dropout(0.2))
+	model.add(Dropout(DROPOUT_DENSE))
 	model.add(Activation('sigmoid'))
 	model.compile(optimizer=Adam(), loss='binary_crossentropy')
 	return model
 
 def train(model, X_tr, Y_tr, X_dv, Y_dv):
-	model.fit(X_tr, Y_tr, batch_size=BATCH_SIZE, nb_epoch=NUM_EPOCHS, validation_data=(X_dv, Y_dv))
+	hist = model.fit(X_tr, Y_tr, batch_size=BATCH_SIZE, nb_epoch=NUM_EPOCHS, validation_data=(X_dv, Y_dv))
+	return hist
 
 def evaluate(model, X_dv, Y_dv):
 	preds = model.predict(X_dv)
@@ -82,7 +85,7 @@ def load_data(Y):
 	"""
 	X_tr, Y_tr, X_dv, Y_dv = [], [], [], []
 
-	notes_filename = '../mimicdata/notes_' + str(Y) + '_train_final.csv'
+	notes_filename = '../mimicdata/notes_' + str(Y) + '_train_single.csv'
 	with open(notes_filename, 'r') as notesfile:
 		#go thru the notes file
 		#an instance is literally just the array of words, and array of labels (turned into indicator array)
