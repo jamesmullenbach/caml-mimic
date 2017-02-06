@@ -82,7 +82,7 @@ def load_data(Y):
 	"""
 	X_tr, Y_tr, X_dv, Y_dv = [], [], [], []
 
-	notes_filename = '../mimicdata/notes_' + str(Y) + '_train_single.csv'
+	notes_filename = '../mimicdata/notes_' + str(Y) + '_train_final.csv'
 	with open(notes_filename, 'r') as notesfile:
 		#go thru the notes file
 		#an instance is literally just the array of words, and array of labels (turned into indicator array)
