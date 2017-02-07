@@ -50,7 +50,7 @@ def auc(yhat, y):
 		fpr[i], tpr[i], _ = roc_curve(y[:,i], yhat[:,i])
 		roc_auc[i] = auc(fpr[i], tpr[i])
 	
-	all_fpr = np.unique(np.concatenate([fpr[i] for i in range(y.shape[1]))
+	all_fpr = np.unique(np.concatenate([fpr[i] for i in range(y.shape[1])]))
 	mean_tpr = np.zeros_like(all_fpr)
 	for i in range(y.shape[1]):
 		mean_tpr += interp(all_fpr, fpr[i], tpr[i])

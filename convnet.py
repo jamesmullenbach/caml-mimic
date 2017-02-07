@@ -134,8 +134,8 @@ def evaluate(model, X_dv, Y_dv):
 
 def plot_auc(fpr, tpr, roc_auc):
 	plt.figure()
-	plt.plot(fpr["micro"], tpr["micro"], label='micro ROC (area={0:0.2f}'.format(roc_auc["micro"])
-	plt.plot(fpr["macro"], tpr["macro"], label='macro ROC (area={0:0.2f}'.format(roc_auc["macro"])
+	plt.plot(fpr["micro"], tpr["micro"], label='micro ROC (area={0:0.2f}'.format(roc_auc["micro"]))
+	plt.plot(fpr["macro"], tpr["macro"], label='macro ROC (area={0:0.2f}'.format(roc_auc["macro"]))
 	plt.plot([0, 1], [0, 1], 'k--')
 	plt.xlim([0.0, 1.0])
 	plt.ylim([0.0, 1.05])
@@ -147,7 +147,7 @@ def plot_auc(fpr, tpr, roc_auc):
 def write_preds(preds, filename):
 	with open(filename, 'w') as outfile:
 		for p in preds:
-			outfile.write(','.join(p) + "\n")	
+			outfile.write(','.join([str(p_i) for p_i in p]) + "\n")	
 
 def load_data(Y, notebook=True):
 	"""
