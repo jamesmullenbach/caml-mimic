@@ -62,6 +62,12 @@ def main(Y, vocab_min, model_path):
 	print("accuracy, precision, recall, f-measure")
 	print(acc_t, prec_t, rec_t, f1_t)
 
+	print("ROC AUC measures")
+	preds = np.array(preds)
+	Y_dv = np.array(Y_dv)
+	fpr, tpr, roc_auc = evaluation.auc_metrics(preds, Y_dv)
+	plot_auc(fpr, tpr, roc_auc)
+
 	print("writing predictions and labels")
 	preds = [[i for i in range(len(p)) if p[i] == 1] for p in preds]
 	preds_t = [[i for i in range(len(p)) if p[i] == 1] for p in preds_t]
@@ -72,11 +78,7 @@ def main(Y, vocab_min, model_path):
 	write_preds(golds, 'dev.golds')
 	write_preds(golds_t, 'train.golds')
 
-	print("ROC AUC measures")
-	fpr, tpr, roc_auc = evaluation.auc(preds, Y_dv)
-	plot_auc(fpr, tpr, roc_auc)
-
-	#model.save(model_path)
+	model.save(model_path)
 
 def build_model(Y, old_version=False):
 	model = Sequential()
@@ -134,8 +136,8 @@ def evaluate(model, X_dv, Y_dv):
 
 def plot_auc(fpr, tpr, roc_auc):
 	plt.figure()
-	plt.plot(fpr["micro"], tpr["micro"], label='micro ROC (area={0:0.2f}'.format(roc_auc["micro"]))
-	plt.plot(fpr["macro"], tpr["macro"], label='macro ROC (area={0:0.2f}'.format(roc_auc["macro"]))
+	plt.plot(fpr["micro"], tpr["micro"], label='micro ROC (area={0:0.3f})'.format(roc_auc["micro"]))
+	plt.plot(fpr["macro"], tpr["macro"], label='macro ROC (area={0:0.3f})'.format(roc_auc["macro"]))
 	plt.plot([0, 1], [0, 1], 'k--')
 	plt.xlim([0.0, 1.0])
 	plt.ylim([0.0, 1.05])
@@ -163,16 +165,16 @@ def load_data(Y, notebook=True):
 	X_tr, Y_tr, X_dv, Y_dv = [], [], [], []
 
 	notes_filename = '../mimicdata/notes_' + str(Y) + '_train_single.csv'
-	print "Processing train"
+	print("Processing train")
 	i = 0
 	with open(notes_filename, 'r') as notesfile:
 		#go thru the notes file
 		#an instance is literally just the array of words, and array of labels (turned into indicator array)
 		if i % 10000 == 0:
 			if notebook:
-				print ".",
+				print( ".",)
 			else:
-				print str(i) + " done"
+				print( str(i) + " done")
 		note_reader = csv.reader(notesfile)
 
 		next(note_reader)
@@ -189,14 +191,14 @@ def load_data(Y, notebook=True):
 	print
 	
 	notes_filename = notes_filename.replace('train', 'dev')
-	print "Processing dev"
+	print("Processing dev")
 	i = 0
 	with open(notes_filename, 'r') as notesfile:
 		if i % 10000 == 0:
 			if notebook:
-				print ".",
+				print(".",)
 			else:
-				print str(i) + " done"
+				print(str(i) + " done")
 		note_reader = csv.reader(notesfile)
 		next(note_reader)
 		for row in note_reader:

@@ -19,6 +19,7 @@ def accuracy(yhat, y):
 
 def precision(yhat, y):
 	num = intersect_size(yhat, y, 1) / yhat.sum(axis=1)
+	#correct for divide-by-zeros
 	num[np.isnan(num)] = 0.
 	return sum(num) / y.shape[0]
 
@@ -42,24 +43,25 @@ def micro_recall(yhat, y):
 def micro_f1(yhat, y):
 	return np.mean(2*intersect_size(yhat,y,0) / (y.sum(axis=0) + yhat.sum(axis=0)))
 
-def auc(yhat, y):
+def auc_metrics(yhat, y):
 	fpr = {}
 	tpr = {}
 	roc_auc = {}
 	for i in range(y.shape[1]):
 		fpr[i], tpr[i], _ = roc_curve(y[:,i], yhat[:,i])
 		roc_auc[i] = auc(fpr[i], tpr[i])
-	
+
+	#macro-AUC: kind of like an average of the ROC curves for all classes
 	all_fpr = np.unique(np.concatenate([fpr[i] for i in range(y.shape[1])]))
 	mean_tpr = np.zeros_like(all_fpr)
 	for i in range(y.shape[1]):
 		mean_tpr += interp(all_fpr, fpr[i], tpr[i])
 	mean_tpr /= y.shape[1]
-
 	fpr["macro"] = all_fpr
 	tpr["macro"] = mean_tpr
 	roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
 
+	#micro-AUC: just looks at each individual prediction
 	fpr["micro"], tpr["micro"], _ = roc_curve(y.ravel(), yhat.ravel())
 	roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
 
