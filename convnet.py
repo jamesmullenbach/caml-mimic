@@ -15,6 +15,8 @@ from keras.models import Sequential
 from keras.optimizers import Adam
 from keras.preprocessing import sequence
 
+import matplotlib.pyplot as plt
+
 #Embedding constants
 VOCAB_SIZE = 40000
 EMBEDDING_SIZE = 50
@@ -69,6 +71,10 @@ def main(Y, vocab_min, model_path):
 	write_preds(preds_t, 'train.preds')
 	write_preds(golds, 'dev.golds')
 	write_preds(golds_t, 'train.golds')
+
+	print("ROC AUC measures")
+	fpr, tpr, roc_auc = evaluation.auc(preds, Y_dv)
+	plot_auc(fpr, tpr, roc_auc)
 
 	#model.save(model_path)
 
@@ -126,6 +132,18 @@ def evaluate(model, X_dv, Y_dv):
 	acc,prec,rec,f1 = evaluation.all_metrics(preds, Y_dv)
 	return preds,acc,prec,rec,f1
 
+def plot_auc(fpr, tpr, roc_auc):
+	plt.figure()
+	plt.plot(fpr["micro"], tpr["micro"], label='micro ROC (area={0:0.2f}'.format(roc_auc["micro"])
+	plt.plot(fpr["macro"], tpr["macro"], label='macro ROC (area={0:0.2f}'.format(roc_auc["macro"])
+	plt.plot([0, 1], [0, 1], 'k--')
+	plt.xlim([0.0, 1.0])
+	plt.ylim([0.0, 1.05])
+	plt.xlabel("False positive rate")
+	plt.ylabel("True positive rate")
+	plt.legend(loc="lower right")
+	plt.show()
+
 def write_preds(preds, filename):
 	with open(filename, 'w') as outfile:
 		for p in preds:
@@ -144,7 +162,7 @@ def load_data(Y, notebook=True):
 	"""
 	X_tr, Y_tr, X_dv, Y_dv = [], [], [], []
 
-	notes_filename = '../mimicdata/notes_' + str(Y) + '_train_final.csv'
+	notes_filename = '../mimicdata/notes_' + str(Y) + '_train_single.csv'
 	print "Processing train"
 	i = 0
 	with open(notes_filename, 'r') as notesfile:
