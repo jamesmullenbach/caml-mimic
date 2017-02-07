@@ -126,6 +126,11 @@ def evaluate(model, X_dv, Y_dv):
 	acc,prec,rec,f1 = evaluation.all_metrics(preds, Y_dv)
 	return preds,acc,prec,rec,f1
 
+def write_preds(preds, filename):
+	with open(filename, 'w') as outfile:
+		for p in preds:
+			outfile.write(','.join(p) + "\n")	
+
 def load_data(Y, notebook=True):
 	"""
 		For the convnet, each note will be a separate instance, rather than each subject
