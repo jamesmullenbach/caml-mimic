@@ -1,6 +1,7 @@
 """
 	Runs a ConvNet over the data to predict ICD-9 diagnosis codes
 """
+from collections import defaultdict
 import csv
 import os
 import numpy as np
@@ -10,7 +11,6 @@ import evaluation
 
 from keras.layers import Activation, Dense, Dropout, Embedding
 from keras.layers.convolutional import Convolution1D
-#from keras.layers.pooling import GlobalMaxPooling1D, MaxPooling1D
 from keras.models import Sequential
 from keras.optimizers import Adam
 from keras.preprocessing import sequence
@@ -32,7 +32,7 @@ NUM_EPOCHS = 5
 #others
 MAX_LENGTH = 400
 
-def main(Y):
+def main(Y, vocab_min, model_path):
 	"""
 		main function which sequentially loads the data, builds the model, trains, and evaluates
 	"""
@@ -42,16 +42,37 @@ def main(Y):
 	X_tr = sequence.pad_sequences(X_tr, maxlen=MAX_LENGTH)
 	X_dv = sequence.pad_sequences(X_dv, maxlen=MAX_LENGTH)
 
-	model = build_model(Y)
+	print("getting lookups")
+	v_dict, c_dict = load_lookups(Y, vocab_min)
+
+	model = build_model(Y, old_version=True)
 
 	print("training model")
 	hist = train(model, X_tr, Y_tr, X_dv, Y_dv)
 	print("evaluating on dev")
-	acc,prec,rec,f1 = evaluate(model, X_dv, Y_dv)
+	preds,acc,prec,rec,f1 = evaluate(model, X_dv, Y_dv)
 	print("accuracy, precision, recall, f-measure")
 	print(acc, prec, rec, f1)
+	print
 
-def build_model(Y, old_version=True):
+	print("sanity check on train")
+	preds_t,acc_t,prec_t,rec_t,f1_t = evaluate(model, X_tr, Y_tr)
+	print("accuracy, precision, recall, f-measure")
+	print(acc_t, prec_t, rec_t, f1_t)
+
+	print("writing predictions and labels")
+	preds = [[i for i in range(len(p)) if p[i] == 1] for p in preds]
+	preds_t = [[i for i in range(len(p)) if p[i] == 1] for p in preds_t]
+	golds = [[i for i in range(len(g)) if g[i] == 1] for g in Y_dv]
+	golds_t = [[i for i in range(len(g)) if g[i] == 1] for g in Y_tr]
+	write_preds(preds, 'dev.preds')
+	write_preds(preds_t, 'train.preds')
+	write_preds(golds, 'dev.golds')
+	write_preds(golds_t, 'train.golds')
+
+	#model.save(model_path)
+
+def build_model(Y, old_version=False):
 	model = Sequential()
 	#no input length bc it's not constant
 	model.add(Embedding(VOCAB_SIZE, EMBEDDING_SIZE, dropout=DROPOUT_EMBED, input_length=MAX_LENGTH))
@@ -103,7 +124,7 @@ def evaluate(model, X_dv, Y_dv):
 	preds[preds < 0.5] = 0
 
 	acc,prec,rec,f1 = evaluation.all_metrics(preds, Y_dv)
-	return acc,prec,rec,f1
+	return preds,acc,prec,rec,f1
 
 def load_data(Y, notebook=True):
 	"""
@@ -118,8 +139,8 @@ def load_data(Y, notebook=True):
 	"""
 	X_tr, Y_tr, X_dv, Y_dv = [], [], [], []
 
-	notes_filename = '../mimicdata/notes_' + str(Y) + '_train_single.csv'
-	print "Processing train",
+	notes_filename = '../mimicdata/notes_' + str(Y) + '_train_final.csv'
+	print "Processing train"
 	i = 0
 	with open(notes_filename, 'r') as notesfile:
 		#go thru the notes file
@@ -141,11 +162,11 @@ def load_data(Y, notebook=True):
 			y_vec = [1 if i in label_ints else 0 for i in range(Y)]
 			X_tr.append(x_vec)
 			Y_tr.append(y_vec)
-		i += 1
+			i += 1
 	print
 	
 	notes_filename = notes_filename.replace('train', 'dev')
-	print "Processing dev",
+	print "Processing dev"
 	i = 0
 	with open(notes_filename, 'r') as notesfile:
 		if i % 10000 == 0:
@@ -163,14 +184,29 @@ def load_data(Y, notebook=True):
 			y_vec = [1 if i in label_ints else 0 for i in range(Y)]
 			X_dv.append(x_vec)
 			Y_dv.append(y_vec)
-		i += 1
+			i += 1
 	print
 	return (np.array(X_tr), np.array(Y_tr)), (np.array(X_dv), np.array(Y_dv))
 
+def load_lookups(Y, vocab_min):
+	v_dict = defaultdict(str)
+	c_dict = defaultdict(str)
+	with open('../mimicdata/vocab_lookup_' + str(vocab_min) + '.csv', 'r') as vocabfile:
+	    vr = csv.reader(vocabfile)
+	    next(vr)
+	    for row in vr:
+	        v_dict[int(row[0])] = row[1]
+
+	with open('../mimicdata/label_lookup_' + str(Y) + '.csv', 'r') as labelfile:
+	    lr = csv.reader(labelfile)
+	    next(lr)
+	    for row in lr:
+	        c_dict[int(row[0])] = row[1]
+	return (v_dict, c_dict)	
 
 if __name__ == "__main__":
 	#just take in the label set size
-	if len(sys.argv) < 2:
-		print("usage: python " + str(os.path.basename(__file__) + " [|Y|]"))
+	if len(sys.argv) < 3:
+		print("usage: python " + str(os.path.basename(__file__) + " [|Y|] [vocab_min] [model_path]"))
 		sys.exit(0)
-	main(int(sys.argv[1]))
+	main(int(sys.argv[1]), int(sys.argv[2]), sys.argv[3])
