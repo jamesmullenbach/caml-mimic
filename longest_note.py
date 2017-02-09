@@ -37,7 +37,7 @@ def longest_note(Y, dataset):
 				if length > max_length:
 					max_length = length
 					longest_note = row[1]
-				label_set = set([int(l) for l in row[2:]])
+				label_set = set([int(l) for l in row[2].split(';')])
 
 				#if we get to another distinct (X,Y) pair, write
 				if subj != cur_subj or cur_labels != label_set:

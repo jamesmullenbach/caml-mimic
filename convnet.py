@@ -29,7 +29,7 @@ STRIDE = 1
 
 #training constants
 BATCH_SIZE = 32
-NUM_EPOCHS = 5
+NUM_EPOCHS = 10
 
 #others
 MAX_LENGTH = 400

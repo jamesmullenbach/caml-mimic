@@ -19,7 +19,7 @@ def main(Y):
 	df = df.sort(['SUBJECT_ID', 'CHARTTIME'])
 
 	print("writing output")
-	df.to_csv('../mimicdata/notes_' + str(Y) + '_sorted.csv')
+	df.to_csv('../mimicdata/notes_' + str(Y) + '_sorted.csv', index=False)
 
 if __name__ == "__main__":
 	if len(sys.argv) < 2:

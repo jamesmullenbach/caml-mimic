@@ -64,11 +64,10 @@ def vocab_filter(v_set, v_dict, c_dict, dataset):
 				#indexify the labels
 				labels = row[2:]
 				filtered_labels = [c_dict[label] for label in labels]
+				label_str = ';'.join(filtered_labels)
 
 				#write output
-				outline = [row[0]]
-				outline.append(filtered)
-				outline.extend(filtered_labels)
+				outline = [row[0], filtered, label_str]
 				outfile.write(','.join(outline) + "\n")
 				i += 1
 
