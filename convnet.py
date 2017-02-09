@@ -1,5 +1,8 @@
 """
 	Runs a ConvNet over the data to predict ICD-9 diagnosis codes
+	options for single window or multi-window
+	
+	Framework: Keras
 """
 from collections import defaultdict
 import csv
@@ -15,13 +18,11 @@ from keras.models import Sequential
 from keras.optimizers import Adam
 from keras.preprocessing import sequence
 
-import matplotlib.pyplot as plt
-
 #Embedding constants
 VOCAB_SIZE = 40000
 EMBEDDING_SIZE = 50
-DROPOUT_EMBED = 0.2
-DROPOUT_DENSE = 0.2
+DROPOUT_EMBED = 0.4
+DROPOUT_DENSE = 0.4
 
 #Convolution constants
 FILTER_SIZE = 3
@@ -34,20 +35,21 @@ NUM_EPOCHS = 10
 #others
 MAX_LENGTH = 400
 
-def main(Y, vocab_min, model_path):
+def main(Y, vocab_min, model_path, dataset):
 	"""
-		main function which sequentially loads the data, builds the model, trains, and evaluates
+		main function which sequentially loads the data, builds the model, trains, evaluates, writes output, etc.
 	"""
-	(X_tr, Y_tr), (X_dv, Y_dv) = load_data(Y, notebook=False)
+	old_version = get_version()
+	(X_tr, Y_tr), (X_dv, Y_dv) = load_data(Y, dataset, notebook=False)
 
 	print("padding sequences")
-	X_tr = sequence.pad_sequences(X_tr, maxlen=MAX_LENGTH)
-	X_dv = sequence.pad_sequences(X_dv, maxlen=MAX_LENGTH)
+	X_tr = sequence.pad_sequences(X_tr, maxlen=MAX_LENGTH, padding='post', truncating='post')
+	X_dv = sequence.pad_sequences(X_dv, maxlen=MAX_LENGTH, padding='post', truncating='post')
 
 	print("getting lookups")
 	v_dict, c_dict = load_lookups(Y, vocab_min)
 
-	model = build_model(Y, old_version=True)
+	model = build_model(Y, old_version=old_version)
 
 	print("training model")
 	hist = train(model, X_tr, Y_tr, X_dv, Y_dv)
@@ -66,7 +68,10 @@ def main(Y, vocab_min, model_path):
 	preds = np.array(preds)
 	Y_dv = np.array(Y_dv)
 	fpr, tpr, roc_auc = evaluation.auc_metrics(preds, Y_dv)
-	plot_auc(fpr, tpr, roc_auc)
+	if old_version:
+		write_auc(fpr, tpr, roc_auc, Y)
+	else:
+		plot_auc(fpr, tpr, roc_auc)
 
 	print("writing predictions and labels")
 	preds = [[i for i in range(len(p)) if p[i] == 1] for p in preds]
@@ -78,13 +83,21 @@ def main(Y, vocab_min, model_path):
 	write_preds(golds, 'dev.golds')
 	write_preds(golds_t, 'train.golds')
 
-	model.save(model_path)
+	if not old_version:
+		model.save(model_path)
 
 def build_model(Y, old_version=False):
+	"""
+		Builds the single window CNN model
+		params:
+			Y: size of the label space
+		returns:
+			model: the CNN model
+	"""
 	model = Sequential()
 	#no input length bc it's not constant
 	model.add(Embedding(VOCAB_SIZE, EMBEDDING_SIZE, dropout=DROPOUT_EMBED, input_length=MAX_LENGTH))
-	model.add(Convolution1D(Y, FILTER_SIZE, activation='tanh'))
+	model.add(Convolution1D(Y, FILTER_SIZE, activation='relu'))
 	if old_version:
 		#http://stats.stackexchange.com/questions/257321/what-is-global-max-pooling-layer-and-what-is-its-advantage-over-maxpooling-layer
 		from keras.layers import MaxPooling1D, Reshape
@@ -100,6 +113,16 @@ def build_model(Y, old_version=False):
 	return model
 
 def built_model_multiwindow(Y, s, l, step):
+	"""
+		Builds the multi-window CNN model
+		params:
+			Y: size of the label space
+			s: the smallest filter size
+			l: the largest filter size
+			step: size difference between consecutive filters
+		returns:
+			cnn_multi: the model
+	"""
 	from keras.layers import Input, merge
 	from keras.models import Model
 	model_input = Input(shape=(MAX_LENGTH,))
@@ -123,10 +146,12 @@ def built_model_multiwindow(Y, s, l, step):
 	return cnn_multi
 
 def train(model, X_tr, Y_tr, X_dv, Y_dv):
+	#fit the model, validating with dev data
 	hist = model.fit(X_tr, Y_tr, batch_size=BATCH_SIZE, nb_epoch=NUM_EPOCHS, validation_data=(X_dv, Y_dv))
 	return hist
 
 def evaluate(model, X_dv, Y_dv):
+	#predict, threshold, and get (macro) metrics
 	preds = model.predict(X_dv)
 	preds[preds >= 0.5] = 1
 	preds[preds < 0.5] = 0
@@ -135,6 +160,8 @@ def evaluate(model, X_dv, Y_dv):
 	return preds,acc,prec,rec,f1
 
 def plot_auc(fpr, tpr, roc_auc):
+	#plot the AUC values for current visualization
+	import matplotlib.pyplot as plt
 	plt.figure()
 	plt.plot(fpr["micro"], tpr["micro"], label='micro ROC (area={0:0.3f})'.format(roc_auc["micro"]))
 	plt.plot(fpr["macro"], tpr["macro"], label='macro ROC (area={0:0.3f})'.format(roc_auc["macro"]))
@@ -146,16 +173,39 @@ def plot_auc(fpr, tpr, roc_auc):
 	plt.legend(loc="lower right")
 	plt.show()
 
+def write_auc(fpr, tpr, roc_auc, Y):
+	#write the AUC values for later visualization
+	with open("auc_" + str(Y) + ".csv", 'w') as outfile:
+		outfile.write(','.join(['label', 'measure', 'values']) + "\n")
+		for label in fpr.keys():
+			fpr_line = [str(label), 'fpr']
+			fpr_line.extend([str(v) for v in fpr[label]])
+			outfile.write(','.join(fpr_line) + "\n")
+	
+			tpr_line = [str(label), 'tpr']
+			tpr_line.extend([str(v) for v in tpr[label]])
+			outfile.write(','.join(tpr_line) + "\n")
+
+			auc_line = [str(label), 'auc', str(roc_auc[label])]
+			outfile.write(','.join(auc_line) + "\n")
+
+def get_version():
+	#use the older version of keras when not running on my pc
+	import socket
+	return ("james" not in socket.gethostname())
+
 def write_preds(preds, filename):
+	#write predictions to a csv
 	with open(filename, 'w') as outfile:
 		for p in preds:
 			outfile.write(','.join([str(p_i) for p_i in p]) + "\n")	
 
-def load_data(Y, notebook=True):
+def load_data(Y, dataset="single", notebook=True):
 	"""
-		For the convnet, each note will be a separate instance, rather than each subject
-		Adapt the methods from log_reg for this
-		Read both notes and label files simultaneously to ensure correspondence
+		params:
+			Y: size of label space
+			dataset: "single" for the one-note-per-subject data, or "full" for all notes
+			notebook: True if running in jupyter notebook (for printing)
 		return:
 			X_tr: list of lists of words. basically as formatted in the csv's already
 			Y_tr: list of lists of labels. like the log_reg labels, but with "duplicates"
@@ -164,7 +214,7 @@ def load_data(Y, notebook=True):
 	"""
 	X_tr, Y_tr, X_dv, Y_dv = [], [], [], []
 
-	notes_filename = '../mimicdata/notes_' + str(Y) + '_train_single.csv'
+	notes_filename = '../mimicdata/notes_' + str(Y) + '_train_' + dataset + '.csv'
 	print("Processing train")
 	i = 0
 	with open(notes_filename, 'r') as notesfile:
@@ -231,7 +281,8 @@ def load_lookups(Y, vocab_min):
 
 if __name__ == "__main__":
 	#just take in the label set size
-	if len(sys.argv) < 3:
-		print("usage: python " + str(os.path.basename(__file__) + " [|Y|] [vocab_min] [model_path]"))
+	if len(sys.argv) < 4:
+		print("usage: python " + str(os.path.basename(__file__) + " [|Y|] [vocab_min] [model_path] [dataset (single or full)]"))
 		sys.exit(0)
-	main(int(sys.argv[1]), int(sys.argv[2]), sys.argv[3])
+	main(int(sys.argv[1]), int(sys.argv[2]), sys.argv[3], sys.argv[4])
+
