@@ -21,8 +21,8 @@ from keras.preprocessing import sequence
 #Embedding constants
 VOCAB_SIZE = 40000
 EMBEDDING_SIZE = 50
-DROPOUT_EMBED = 0.4
-DROPOUT_DENSE = 0.4
+DROPOUT_EMBED = 0.5
+DROPOUT_DENSE = 0.5
 
 #Convolution constants
 FILTER_SIZE = 3
@@ -54,20 +54,25 @@ def main(Y, vocab_min, model_path, dataset):
 	print("training model")
 	hist = train(model, X_tr, Y_tr, X_dv, Y_dv)
 	print("evaluating on dev")
-	preds,acc,prec,rec,f1 = evaluate(model, X_dv, Y_dv)
-	print("accuracy, precision, recall, f-measure")
-	print(acc, prec, rec, f1)
+	preds,metrics,fpr, tpr = evaluate(model, X_dv, Y_dv)
+	print("[MACRO] accuracy, precision, recall, f-measure, AUC")
+	print(metrics["acc"], metrics["prec"], metrics["rec"], metrics["f1"], metrics["auc"])
+	print("[MICRO] accuracy, precision, recall, f-measure, AUC")
+	print(metrics["acc_micro"], metrics["prec_micro"], metrics["rec_micro"], metrics["f1_micro"], metrics["auc_micro"])
 	print
 
 	print("sanity check on train")
-	preds_t,acc_t,prec_t,rec_t,f1_t = evaluate(model, X_tr, Y_tr)
-	print("accuracy, precision, recall, f-measure")
-	print(acc_t, prec_t, rec_t, f1_t)
+	preds_t,metrics_t, fpr_t, tpr_t = evaluate(model, X_tr, Y_tr)
+	print("[MACRO] accuracy, precision, recall, f-measure, AUC")
+	print(metrics_t["acc"], metrics_t["prec"], metrics_t["rec"], metrics_t["f1"], metrics_t["auc"])
+	print("[MICRO] accuracy, precision, recall, f-measure, AUC")
+	print(metrics_t["acc_micro"], metrics_t["prec_micro"], metrics_t["rec_micro"], metrics_t["f1_micro"], metrics_t["auc_micro"])
 
 	print("ROC AUC measures")
 	preds = np.array(preds)
 	Y_dv = np.array(Y_dv)
-	fpr, tpr, roc_auc = evaluation.auc_metrics(preds, Y_dv)
+	roc_auc = {"macro": metrics["auc"], "micro": metrics["auc_micro"]}
+	roc_auc.update({i: metrics["auc_%d" % i] for i in range(Y)})
 	if old_version:
 		write_auc(fpr, tpr, roc_auc, Y)
 	else:
@@ -97,7 +102,7 @@ def build_model(Y, old_version=False):
 	model = Sequential()
 	#no input length bc it's not constant
 	model.add(Embedding(VOCAB_SIZE, EMBEDDING_SIZE, dropout=DROPOUT_EMBED, input_length=MAX_LENGTH))
-	model.add(Convolution1D(Y, FILTER_SIZE, activation='relu'))
+	model.add(Convolution1D(Y, FILTER_SIZE, activation='tanh'))
 	if old_version:
 		#http://stats.stackexchange.com/questions/257321/what-is-global-max-pooling-layer-and-what-is-its-advantage-over-maxpooling-layer
 		from keras.layers import MaxPooling1D, Reshape
@@ -156,8 +161,8 @@ def evaluate(model, X_dv, Y_dv):
 	preds[preds >= 0.5] = 1
 	preds[preds < 0.5] = 0
 
-	acc,prec,rec,f1 = evaluation.all_metrics(preds, Y_dv)
-	return preds,acc,prec,rec,f1
+	metrics, fpr, tpr = evaluation.all_metrics(preds, Y_dv)
+	return preds, metrics, fpr, tpr
 
 def plot_auc(fpr, tpr, roc_auc):
 	#plot the AUC values for current visualization

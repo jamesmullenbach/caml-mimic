@@ -9,6 +9,19 @@ from scipy import interp
 from sklearn.metrics import roc_curve, auc
 
 def all_metrics(yhat, y):
+	#returns 1 dicts
+	names = ["acc", "prec", "rec", "f1"]
+	macro = all_macro(yhat, y)
+	micro = all_micro(yhat, y)
+	metrics = {names[i]: macro[i] for i in range(len(macro))}
+	metrics.update({names[i] + "_micro": micro[i] for i in range(len(micro))})
+
+	fpr, tpr, roc_auc = auc_metrics(yhat, y)
+	metrics.update(roc_auc)
+	return metrics, fpr, tpr
+	
+
+def all_macro(yhat, y):
 	return accuracy(yhat, y), precision(yhat, y), recall(yhat, y), f1(yhat, y)
 
 def all_micro(yhat, y):
@@ -49,7 +62,7 @@ def auc_metrics(yhat, y):
 	roc_auc = {}
 	for i in range(y.shape[1]):
 		fpr[i], tpr[i], _ = roc_curve(y[:,i], yhat[:,i])
-		roc_auc[i] = auc(fpr[i], tpr[i])
+		roc_auc["auc_%d" % i] = auc(fpr[i], tpr[i])
 
 	#macro-AUC: kind of like an average of the ROC curves for all classes
 	all_fpr = np.unique(np.concatenate([fpr[i] for i in range(y.shape[1])]))
@@ -59,11 +72,11 @@ def auc_metrics(yhat, y):
 	mean_tpr /= y.shape[1]
 	fpr["macro"] = all_fpr
 	tpr["macro"] = mean_tpr
-	roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
+	roc_auc["auc"] = auc(fpr["macro"], tpr["macro"])
 
 	#micro-AUC: just looks at each individual prediction
 	fpr["micro"], tpr["micro"], _ = roc_curve(y.ravel(), yhat.ravel())
-	roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
+	roc_auc["auc_micro"] = auc(fpr["micro"], tpr["micro"])
 
 	return fpr, tpr, roc_auc
 
