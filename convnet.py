@@ -20,17 +20,18 @@ from keras.preprocessing import sequence
 
 #Embedding constants
 VOCAB_SIZE = 40000
-EMBEDDING_SIZE = 50
+EMBEDDING_SIZE = 64
 DROPOUT_EMBED = 0.5
 DROPOUT_DENSE = 0.5
 
 #Convolution constants
-FILTER_SIZE = 3
+FILTER_SIZE = 5
 STRIDE = 1
+CONV_DIM_FACTOR = 10
 
 #training constants
 BATCH_SIZE = 32
-NUM_EPOCHS = 10
+NUM_EPOCHS = 5
 
 #others
 MAX_LENGTH = 400
@@ -40,6 +41,10 @@ def main(Y, vocab_min, model_path, dataset):
 		main function which sequentially loads the data, builds the model, trains, evaluates, writes output, etc.
 	"""
 	old_version = get_version()
+
+	model = build_model(Y, old_version=old_version)
+	#model = build_model_multiwindow(Y, 3, 5, 1, old_version=old_version)
+
 	(X_tr, Y_tr), (X_dv, Y_dv) = load_data(Y, dataset, notebook=False)
 
 	print("padding sequences")
@@ -49,8 +54,13 @@ def main(Y, vocab_min, model_path, dataset):
 	print("getting lookups")
 	v_dict, c_dict = load_lookups(Y, vocab_min)
 
-	model = build_model(Y, old_version=old_version)
-
+	#shuffle before just in case
+	np.random.seed(1337)
+	np.random.shuffle(X_tr)
+	np.random.seed(1337)
+	np.random.shuffle(Y_tr)
+	print("##### OTHER PARAMS ######")
+	print("# Sequence length: %d, conv window: %d, dropout: %f" % (MAX_LENGTH, CONV_DIM_FACTOR*Y, DROPOUT_DENSE))
 	print("training model")
 	hist = train(model, X_tr, Y_tr, X_dv, Y_dv)
 	print("evaluating on dev")
@@ -102,22 +112,25 @@ def build_model(Y, old_version=False):
 	model = Sequential()
 	#no input length bc it's not constant
 	model.add(Embedding(VOCAB_SIZE, EMBEDDING_SIZE, dropout=DROPOUT_EMBED, input_length=MAX_LENGTH))
-	model.add(Convolution1D(Y, FILTER_SIZE, activation='tanh'))
+	model.add(Convolution1D(Y*CONV_DIM_FACTOR, FILTER_SIZE, activation='tanh'))
 	if old_version:
 		#http://stats.stackexchange.com/questions/257321/what-is-global-max-pooling-layer-and-what-is-its-advantage-over-maxpooling-layer
 		from keras.layers import MaxPooling1D, Reshape
 		model.add(MaxPooling1D(pool_length=MAX_LENGTH-FILTER_SIZE+1))
-		model.add(Reshape((Y,)))
+		model.add(Reshape((Y*CONV_DIM_FACTOR,)))
 	else:
 		from keras.layers.pooling import GlobalMaxPooling1D
 		model.add(GlobalMaxPooling1D())
+	#model.add(Dense(Y*CONV_DIM_FACTOR/2))
+	#model.add(Dropout(DROPOUT_DENSE))
 	model.add(Dense(Y))
 	model.add(Dropout(DROPOUT_DENSE))
 	model.add(Activation('sigmoid'))
 	model.compile(optimizer='rmsprop', loss='binary_crossentropy')
+	print(model.summary())
 	return model
 
-def built_model_multiwindow(Y, s, l, step):
+def build_model_multiwindow(Y, s, l, step, old_version=False):
 	"""
 		Builds the multi-window CNN model
 		params:
@@ -135,19 +148,31 @@ def built_model_multiwindow(Y, s, l, step):
 
 	convs = []
 	pools = []
+	if old_version:
+		reshapes = []
 	for i,sz in enumerate(range(s, l+1, step)):
-		convs.append(Convolution1D(Y, sz, activation='tanh')(embed))
-		pools.append(GlobalMaxPooling1D())(convs[i])
-	pool1 = GlobalMaxPooling1D()(conv1)
+		convs.append(Convolution1D(Y*CONV_DIM_FACTOR, sz, activation='tanh')(embed))
+		if old_version:
+			#http://stats.stackexchange.com/questions/257321/what-is-global-max-pooling-layer-and-what-is-its-advantage-over-maxpooling-layer
+			from keras.layers import MaxPooling1D, Reshape
+			pools.add(MaxPooling1D(pool_length=MAX_LENGTH-FILTER_SIZE+1))(convs[i])
+			reshapes.add(Reshape((Y*CONV_DIM_FACTOR,)))(pools[i])
+		else:
+			from keras.layers.pooling import GlobalMaxPooling1D
+			pools.add(GlobalMaxPooling1D())(convs[i])
 
-	merged = merge(pools, mode='concat', concat_axis=1) 
+	if old_version:
+		merged = merge(reshapes, mode='concat', concat_axis=1)
+	else:
+		merged = merge(pools, mode='concat', concat_axis=1) 
 
-	dense = Dense(Y)(merged)
+	dense = Dense(CONV_DIM_FACTOR*Y)(merged)
 	dropout = Dropout(DROPOUT_DENSE)(dense)
 	activation = Activation('sigmoid')(dropout)
 	cnn_multi = Model(input=model_input, output=activation)
 	
 	cnn_multi.compile(optimizer='rmsprop', loss='binary_crossentropy')
+	print(model.summary())
 	return cnn_multi
 
 def train(model, X_tr, Y_tr, X_dv, Y_dv):
