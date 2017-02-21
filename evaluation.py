@@ -75,15 +75,15 @@ def auc_metrics(yhat, y):
         tpr = {}
         roc_auc = {}
         for i in range(y.shape[1]):
-                fpr[i], tpr[i], _ = roc_curve(y[:,i], yhat[:,i])
-                if len(fpr[i]) > 1 and len(tpr[i]) > 1:
-                    roc_auc["auc_%d" % i] = auc(fpr[i], tpr[i])
+            fpr[i], tpr[i], _ = roc_curve(y[:,i], yhat[:,i])
+            if len(fpr[i]) > 1 and len(tpr[i]) > 1:
+                roc_auc["auc_%d" % i] = auc(fpr[i], tpr[i])
 
         #macro-AUC: kind of like an average of the ROC curves for all classes
         all_fpr = np.unique(np.concatenate([fpr[i] for i in range(y.shape[1])]))
         mean_tpr = np.zeros_like(all_fpr)
         for i in range(y.shape[1]):
-                mean_tpr += interp(all_fpr, fpr[i], tpr[i])
+            mean_tpr += interp(all_fpr, fpr[i], tpr[i])
         mean_tpr /= y.shape[1]
         fpr["macro"] = all_fpr
         tpr["macro"] = mean_tpr

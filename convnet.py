@@ -35,7 +35,7 @@ POOL_LENGTH = 3
 
 #training constants
 BATCH_SIZE = 32
-NUM_EPOCHS = 10
+NUM_EPOCHS = 5
 
 
 def main(Y, vocab_min, model_path, dataset):
@@ -50,12 +50,22 @@ def main(Y, vocab_min, model_path, dataset):
     for i in range(NUM_EPOCHS):
         hist = train(cnn, i, dataset, Y)
         history.append(hist)
-        metrics, fpr, tpr = test(cnn, dataset, Y)
+        metrics, fpr, tpr = test("dev", cnn, dataset, Y, print_samples=True)
+        print
     	print("[MACRO] accuracy, precision, recall, f-measure, AUC")
-    	print(metrics["acc"], metrics["prec"], metrics["rec"], metrics["f1"], metrics["auc_macro"])
+    	print(metrics["acc"], metrics["prec"], metrics["rec"], metrics["f1"], metrics["auc"])
     	print("[MICRO] accuracy, precision, recall, f-measure, AUC")
     	print(metrics["acc_micro"], metrics["prec_micro"], metrics["rec_micro"], metrics["f1_micro"], metrics["auc_micro"])
-    	print
+        print
+
+        print("sanity check on train")
+        metrics_t, fpr_t, tpr_t = test("train", cnn, dataset, Y)
+        print
+    	print("[MACRO] accuracy, precision, recall, f-measure, AUC")
+    	print(metrics_t["acc"], metrics_t["prec"], metrics_t["rec"], metrics_t["f1"], metrics_t["auc"])
+    	print("[MICRO] accuracy, precision, recall, f-measure, AUC")
+    	print(metrics_t["acc_micro"], metrics_t["prec_micro"], metrics_t["rec_micro"], metrics_t["f1_micro"], metrics_t["auc_micro"])
+        print
     
     cnn.save(model_path)
 
@@ -68,18 +78,16 @@ def build_model(Y):
             cnn: the CNN model
     """
     cnn = Sequential()
-    #no input length bc it's not constant
     cnn.add(Embedding(VOCAB_SIZE, EMBEDDING_SIZE, dropout=DROPOUT_EMBED))
     cnn.add(Convolution1D(Y*CONV_DIM_FACTOR, FILTER_SIZE, activation='tanh'))
     from keras.layers.pooling import GlobalMaxPooling1D
     cnn.add(GlobalMaxPooling1D())
-    #model.add(Dense(Y*CONV_DIM_FACTOR/2))
-    #model.add(Dropout(DROPOUT_DENSE))
     cnn.add(Dense(Y))
     cnn.add(Dropout(DROPOUT_DENSE))
     cnn.add(Activation('sigmoid'))
     cnn.compile(optimizer='rmsprop', loss='binary_crossentropy')
     print(cnn.summary())
+    print
     return cnn 
 
 def build_model_multiwindow(Y, s, l, step):
@@ -127,7 +135,7 @@ def build_model_multiwindow(Y, s, l, step):
     print(cnn_multi.summary())
     return cnn_multi
 
-def train(cnn, epoch, dataset, Y):
+def train(cnn, epoch, dataset, Y, print_weights=False):
     """
         Trains the model for one epoch on train data. Batches by length
         params:
@@ -143,16 +151,19 @@ def train(cnn, epoch, dataset, Y):
                                                                 % (str(Y), dataset),\
                                                             BATCH_SIZE, Y)):
         loss = cnn.train_on_batch(X_batch, Y_batch)
-        if idx % 100 == 0:
+        if idx % 500 == 0:
             print('Train Epoch: {} [batch #{}, batch_size {}, seq length {}]\tLoss: {}'.format(
                 epoch+1, idx, X_batch.shape[0], X_batch.shape[1], loss))
+        if idx % 500 == 0 and print_weights:
+            print("last layer weights: " + str(cnn.layers[-3].get_weights()[0][:5]))
         hist.append(loss)
     return hist
 
-def test(cnn, dataset, Y, max_iter = 1e9):
+def test(fold, cnn, dataset, Y, max_iter = 1e9, print_samples=False):
     """
         Runs the model on dev data, computes a bunch of metrics
         params:
+            fold: dev or train or test
             cnn: the model
             dataset: full or single
             Y: size of the label space
@@ -162,80 +173,32 @@ def test(cnn, dataset, Y, max_iter = 1e9):
             fpr: false positive rate vector
             tpr: true positive rate vector
     """
-    accs, precs, recs, f1s = [], [], [], []
-    accs_micro, precs_micro, recs_micro, f1s_micro = [], [], [], []
-    fprs, tprs = [], []
-    batch_sizes = []
-    all_fpr = np.array([])
     Y_tot = []
     Y_hat_tot = []
-    fpr_tot = {i: [] for i in range(Y)}
-    tpr_tot = {i: [] for i in range(Y)}
-    for idx,(X_batch, Y_batch) in enumerate(data_generator('../mimicdata/notes_%s_dev_%s_sorted.csv'\
-                                                               % (str(Y), dataset),\
+    for idx,(X_batch, Y_batch) in enumerate(data_generator('../mimicdata/notes_%s_%s_%s_sorted.csv'\
+                                                               % (str(Y), fold, dataset),\
                                                            BATCH_SIZE, Y)):
         if idx >= max_iter:
             break
         Y_hat = cnn.predict_on_batch(X_batch)
+
+        if np.random.rand() > 0.995 and print_samples:
+            print("sample prediction")
+            print("Y_true: " + str(Y_batch[0]))
+            print("Y_hat: " + str(Y_hat[0]))
+            Y_hat = np.round(Y_hat)
+            print("Y_hat: " + str(Y_hat[0]))
+            print
+
         Y_hat = np.round(Y_hat)
 
         Y_hat_tot.extend(Y_hat)
         Y_tot.extend(Y_batch)
-
-        metrics, fpr, tpr = evaluation.all_metrics(Y_hat, Y_batch)
-        batch_sizes.append(Y_batch.shape[0])
-
-        accs.append(metrics['acc'])
-        precs.append(metrics['prec'])
-        recs.append(metrics['rec'])
-        f1s.append(metrics['f1'])
-
-        accs_micro.append(metrics['acc_micro'])
-        precs_micro.append(metrics['prec_micro'])
-        recs_micro.append(metrics['rec_micro'])
-        f1s_micro.append(metrics['f1_micro'])
-
-        if fpr is not None and tpr is not None:
-            batch_fpr = np.unique(np.concatenate([fpr[i] for i in range(Y)]))
-            all_fpr = np.concatenate((all_fpr, batch_fpr))
-            for i in range(Y):
-                fpr_tot[i].extend(fpr[i])
-                tpr_tot[i].extend(tpr[i])
   
     metrics = {}
     Y_tot = np.array(Y_tot)
     Y_hat_tot = np.array(Y_hat_tot)
-    #micro-AUC: just looks at each individual prediction
-    fpr_micro, tpr_micro, _ = roc_curve(Y_tot.ravel(), Y_hat_tot.ravel())
-    fpr_tot["micro"] = fpr_micro
-    tpr_tot["micro"] = tpr_micro
-    metrics["auc_micro"] = auc(fpr_tot["micro"], tpr_tot["micro"])
-
-    #macro-AUC: kind of like an average of the ROC curves for all classes
-    all_fpr = np.unique(all_fpr)
-    all_fpr = all_fpr[~np.isnan(all_fpr)]
-    mean_tpr = np.zeros_like(all_fpr)
-    denom = 0
-    for i in range(Y):
-        val = interp(all_fpr, fpr_tot[i], tpr_tot[i])
-        if not np.isnan(val).any():
-            denom += 1
-            mean_tpr += val
-    if denom > 0:
-        mean_tpr /= denom
-    fpr_tot["macro"] = all_fpr
-    tpr_tot["macro"] = mean_tpr
-    metrics["auc_macro"] = auc(fpr_tot["macro"], tpr_tot["macro"])
-
-    metrics['acc'] = np.average(accs, weights=batch_sizes)
-    metrics['prec'] = np.average(precs, weights=batch_sizes)
-    metrics['rec'] = np.average(recs, weights=batch_sizes)
-    metrics['f1'] = np.average(f1s, weights=batch_sizes)
-
-    metrics['acc_micro'] = np.average(accs_micro, weights=batch_sizes)
-    metrics['prec_micro'] = np.average(precs_micro, weights=batch_sizes)
-    metrics['rec_micro'] = np.average(recs_micro, weights=batch_sizes)
-    metrics['f1_micro'] = np.average(f1s_micro, weights=batch_sizes)
+    metrics, fpr_tot, tpr_tot = evaluation.all_metrics(Y_hat_tot, Y_tot)
 
     return metrics, fpr_tot, tpr_tot
 
