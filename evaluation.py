@@ -9,7 +9,7 @@ from scipy import interp
 from sklearn.metrics import roc_curve, auc
 
 def all_metrics(yhat, y):
-	#returns 1 dicts
+    #returns dict, dict, dict
 	names = ["acc", "prec", "rec", "f1"]
 	macro = all_macro(yhat, y)
 	micro = all_micro(yhat, y)

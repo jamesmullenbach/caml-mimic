@@ -55,7 +55,7 @@ def main(Y, dataset):
 
 	print("sanity check on train")
 	yhat_tr = clf.predict(X)
-	metrics_t, fpr_t, tpr_t = evaluation.all_metrics(yhat, yy)
+	metrics_t, fpr_t, tpr_t = evaluation.all_metrics(yhat_tr, yy)
 	print("[MACRO] accuracy, precision, recall, f-measure, AUC")
 	print(metrics_t["acc"], metrics_t["prec"], metrics_t["rec"], metrics_t["f1"], metrics_t["auc"])
 	print("[MICRO] accuracy, precision, recall, f-measure, AUC")
