@@ -141,7 +141,7 @@ def train(cnn, epoch, dataset, Y):
         loss = cnn.train_on_batch(X_batch, Y_batch)
         if idx % 100 == 0:
             print('Train Epoch: {} [batch #{}, batch_size {}, seq length {}]\tLoss: {}'.format(
-                epoch+1, idx, X_batch.shape[0], X_batch.shape[1], loss))
+                epoch+1, idx, X_batch.shape[0], X_batch.shape[1], loss[:6]))
         hist.append(loss)
     return hist
 
