@@ -1,6 +1,6 @@
 """
 	Reads in train, dev, test data
-	For each distinct (X,Y) pair, select the longest note
+	For each distinct (X,Y) pair, select the longest note for a patient-admission
 	Output to a new file
 """
 

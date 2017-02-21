@@ -9,16 +9,22 @@ from scipy import interp
 from sklearn.metrics import roc_curve, auc
 
 def all_metrics(yhat, y):
-    #returns dict, dict, dict
-	names = ["acc", "prec", "rec", "f1"]
-	macro = all_macro(yhat, y)
-	micro = all_micro(yhat, y)
-	metrics = {names[i]: macro[i] for i in range(len(macro))}
-	metrics.update({names[i] + "_micro": micro[i] for i in range(len(micro))})
+        #returns dict, dict, dict
+        names = ["acc", "prec", "rec", "f1"]
+        macro = all_macro(yhat, y)
+        micro = all_micro(yhat, y)
+        metrics = {names[i]: macro[i] for i in range(len(macro))}
+        metrics.update({names[i] + "_micro": micro[i] for i in range(len(micro))})
 
-	fpr, tpr, roc_auc = auc_metrics(yhat, y)
-	metrics.update(roc_auc)
-	return metrics, fpr, tpr
+        auc_vals = auc_metrics(yhat, y)
+        if auc_vals is not None:
+            fpr = auc_vals[0]
+            tpr = auc_vals[1]
+            roc_auc = auc_vals[2]
+            metrics.update(roc_auc)
+            return metrics, fpr, tpr
+        else:
+            return metrics, None, None
 	
 
 def all_macro(yhat, y):
@@ -43,7 +49,9 @@ def f1(yhat, y):
 	return sum(2*intersect_size(yhat, y, 1) / (y.sum(axis=1) + yhat.sum(axis=1))) / y.shape[0]
 
 def micro_accuracy(yhat, y):
-	return np.mean(intersect_size(yhat, y, 0) / union_size(yhat, y, 0))
+        num = intersect_size(yhat, y, 0) / union_size(yhat, y, 0)
+        num[np.isnan(num)] = 0.
+        return np.mean(num)
 
 def micro_precision(yhat, y):
 	num = intersect_size(yhat, y, 0) / yhat.sum(axis=0)
@@ -51,34 +59,41 @@ def micro_precision(yhat, y):
 	return np.mean(num)
 
 def micro_recall(yhat, y):
-	return np.mean(intersect_size(yhat, y, 0) / y.sum(axis=0))
+        num = intersect_size(yhat, y, 0) / y.sum(axis=0)
+        num[np.isnan(num)] = 0.
+        return np.mean(num)
 
 def micro_f1(yhat, y):
-	return np.mean(2*intersect_size(yhat,y,0) / (y.sum(axis=0) + yhat.sum(axis=0)))
+        num = 2*intersect_size(yhat,y,0) / (y.sum(axis=0) + yhat.sum(axis=0))
+        num[np.isnan(num)] = 0.
+        return np.mean(num)
 
 def auc_metrics(yhat, y):
-	fpr = {}
-	tpr = {}
-	roc_auc = {}
-	for i in range(y.shape[1]):
-		fpr[i], tpr[i], _ = roc_curve(y[:,i], yhat[:,i])
-		roc_auc["auc_%d" % i] = auc(fpr[i], tpr[i])
+        if yhat.shape[0] <= 1:
+            return
+        fpr = {}
+        tpr = {}
+        roc_auc = {}
+        for i in range(y.shape[1]):
+                fpr[i], tpr[i], _ = roc_curve(y[:,i], yhat[:,i])
+                if len(fpr[i]) > 1 and len(tpr[i]) > 1:
+                    roc_auc["auc_%d" % i] = auc(fpr[i], tpr[i])
 
-	#macro-AUC: kind of like an average of the ROC curves for all classes
-	all_fpr = np.unique(np.concatenate([fpr[i] for i in range(y.shape[1])]))
-	mean_tpr = np.zeros_like(all_fpr)
-	for i in range(y.shape[1]):
-		mean_tpr += interp(all_fpr, fpr[i], tpr[i])
-	mean_tpr /= y.shape[1]
-	fpr["macro"] = all_fpr
-	tpr["macro"] = mean_tpr
-	roc_auc["auc"] = auc(fpr["macro"], tpr["macro"])
+        #macro-AUC: kind of like an average of the ROC curves for all classes
+        all_fpr = np.unique(np.concatenate([fpr[i] for i in range(y.shape[1])]))
+        mean_tpr = np.zeros_like(all_fpr)
+        for i in range(y.shape[1]):
+                mean_tpr += interp(all_fpr, fpr[i], tpr[i])
+        mean_tpr /= y.shape[1]
+        fpr["macro"] = all_fpr
+        tpr["macro"] = mean_tpr
+        roc_auc["auc"] = auc(fpr["macro"], tpr["macro"])
 
-	#micro-AUC: just looks at each individual prediction
-	fpr["micro"], tpr["micro"], _ = roc_curve(y.ravel(), yhat.ravel())
-	roc_auc["auc_micro"] = auc(fpr["micro"], tpr["micro"])
+        #micro-AUC: just looks at each individual prediction
+        fpr["micro"], tpr["micro"], _ = roc_curve(y.ravel(), yhat.ravel())
+        roc_auc["auc_micro"] = auc(fpr["micro"], tpr["micro"])
 
-	return fpr, tpr, roc_auc
+        return fpr, tpr, roc_auc
 
 def union_size(yhat, y, axis):
 	#axis=0 for label-level union (micro). axis=1 for instance-level (macro)

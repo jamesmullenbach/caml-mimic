@@ -141,17 +141,18 @@ def train(cnn, epoch, dataset, Y):
         loss = cnn.train_on_batch(X_batch, Y_batch)
         if idx % 100 == 0:
             print('Train Epoch: {} [batch #{}, batch_size {}, seq length {}]\tLoss: {}'.format(
-                epoch+1, idx, X_batch.shape[0], X_batch.shape[1], loss[:6]))
+                epoch+1, idx, X_batch.shape[0], X_batch.shape[1], loss))
         hist.append(loss)
     return hist
 
-def test(cnn, dataset, Y):
+def test(cnn, dataset, Y, max_iter = 1e9):
     """
         Runs the model on dev data, computes a bunch of metrics
         params:
             cnn: the model
             dataset: full or single
             Y: size of the label space
+            max_iter: (for debugging) max number of batches to predict on
         returns:
             metrics: contains acc, prec, rec, f1, auc measures
             fpr: false positive rate vector
@@ -169,13 +170,14 @@ def test(cnn, dataset, Y):
     for idx,(X_batch, Y_batch) in enumerate(data_generator('../mimicdata/notes_%s_dev_%s_sorted.csv'\
                                                                % (str(Y), dataset),\
                                                            BATCH_SIZE, Y)):
+        if idx >= max_iter:
+            break
         Y_hat = cnn.predict_on_batch(X_batch)
         Y_hat = np.round(Y_hat)
 
         Y_hat_tot.extend(Y_hat)
         Y_tot.extend(Y_batch)
 
-        print(Y_batch)
         metrics, fpr, tpr = evaluation.all_metrics(Y_hat, Y_batch)
         batch_sizes.append(Y_batch.shape[0])
 
@@ -189,27 +191,38 @@ def test(cnn, dataset, Y):
         recs_micro.append(metrics['rec_micro'])
         f1s_micro.append(metrics['f1_micro'])
 
-        batch_fpr = np.unique(np.concatenate([fpr[i] for i in range(Y)]))
-        all_fpr = np.concatenate((all_fpr, batch_fpr))
-        for i in range(Y):
-            fpr_tot[i].extend(fpr[i])
-            tpr_tot[i].extend(tpr[i])
-    
+        if fpr is not None and tpr is not None:
+            batch_fpr = np.unique(np.concatenate([fpr[i] for i in range(Y)]))
+            all_fpr = np.concatenate((all_fpr, batch_fpr))
+            for i in range(Y):
+                fpr_tot[i].extend(fpr[i])
+                tpr_tot[i].extend(tpr[i])
+  
+    metrics = {}
+    Y_tot = np.array(Y_tot)
+    Y_hat_tot = np.array(Y_hat_tot)
     #micro-AUC: just looks at each individual prediction
-    fpr["micro"], tpr["micro"], _ = roc_curve(Y_hat.ravel(), Y_hat_tot.ravel())
-    metrics["auc_micro"] = auc(fpr["micro"], tpr["micro"])
+    fpr_micro, tpr_micro, _ = roc_curve(Y_tot.ravel(), Y_hat_tot.ravel())
+    fpr_tot["micro"] = fpr_micro
+    tpr_tot["micro"] = tpr_micro
+    metrics["auc_micro"] = auc(fpr_tot["micro"], tpr_tot["micro"])
 
     #macro-AUC: kind of like an average of the ROC curves for all classes
     all_fpr = np.unique(all_fpr)
+    all_fpr = all_fpr[~np.isnan(all_fpr)]
     mean_tpr = np.zeros_like(all_fpr)
+    denom = 0
     for i in range(Y):
-        mean_tpr += interp(all_fpr, fpr_tot[i], tpr_tot[i])
-    mean_tpr /= Y
-    fpr["macro"] = all_fpr
-    fpr["macro"] = mean_tpr
-    metrics["auc_macro"] = auc(fpr["macro"], tpr["macro"])
+        val = interp(all_fpr, fpr_tot[i], tpr_tot[i])
+        if not np.isnan(val).any():
+            denom += 1
+            mean_tpr += val
+    if denom > 0:
+        mean_tpr /= denom
+    fpr_tot["macro"] = all_fpr
+    tpr_tot["macro"] = mean_tpr
+    metrics["auc_macro"] = auc(fpr_tot["macro"], tpr_tot["macro"])
 
-    metrics = {}
     metrics['acc'] = np.average(accs, weights=batch_sizes)
     metrics['prec'] = np.average(precs, weights=batch_sizes)
     metrics['rec'] = np.average(recs, weights=batch_sizes)
@@ -220,7 +233,7 @@ def test(cnn, dataset, Y):
     metrics['rec_micro'] = np.average(recs_micro, weights=batch_sizes)
     metrics['f1_micro'] = np.average(f1s_micro, weights=batch_sizes)
 
-    return metrics, fpr, tpr
+    return metrics, fpr_tot, tpr_tot
 
 def evaluate(cnn, X_dv, Y_dv):
     #predict, threshold, and get (macro) metrics
