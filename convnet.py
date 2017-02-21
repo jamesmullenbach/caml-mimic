@@ -35,23 +35,27 @@ POOL_LENGTH = 3
 
 #training constants
 BATCH_SIZE = 32
-NUM_EPOCHS = 1
+NUM_EPOCHS = 10
 
 
 def main(Y, vocab_min, model_path, dataset):
     """
         main function which sequentially loads the data, builds the model, trains, evaluates, writes output, etc.
     """
-    #cnn = build_model(Y)
-    cnn = build_model_multiwindow(Y, 3, 5, 1)
+    cnn = build_model(Y)
+    #cnn = build_model_multiwindow(Y, 3, 5, 1)
     #cnn = build_model_multiconv(Y)
 
     history = []
     for i in range(NUM_EPOCHS):
-        print("epoch %d" % i)
         hist = train(cnn, i, dataset, Y)
         history.append(hist)
-        dev_loss = test(cnn, dataset, Y)
+        metrics, fpr, tpr = test(cnn, dataset, Y)
+    	print("[MACRO] accuracy, precision, recall, f-measure, AUC")
+    	print(metrics["acc"], metrics["prec"], metrics["rec"], metrics["f1"], metrics["auc_macro"])
+    	print("[MICRO] accuracy, precision, recall, f-measure, AUC")
+    	print(metrics["acc_micro"], metrics["prec_micro"], metrics["rec_micro"], metrics["f1_micro"], metrics["auc_micro"])
+    	print
     
     cnn.save(model_path)
 
