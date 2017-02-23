@@ -6,9 +6,11 @@
 """
 from collections import defaultdict
 import csv
+import json
 import os
 import numpy as np
 import sys
+import time
 
 import evaluation
 
@@ -23,51 +25,65 @@ from sklearn.metrics import roc_curve, auc
 
 #Embedding constants
 VOCAB_SIZE = 40000
-EMBEDDING_SIZE = 64
+EMBEDDING_SIZE = 100
 DROPOUT_EMBED = 0.5
-DROPOUT_DENSE = 0.5
+EMBED_INIT = 'glorot_uniform'
 
 #Convolution constants
 FILTER_SIZE = 3
-STRIDE = 1
+MULTI_WINDOW = False
+MIN_FILTER = 3
+MAX_FILTER = 5
 CONV_DIM_FACTOR = 10
-POOL_LENGTH = 3
+ACTIVATION_CONV = 'tanh'
+WINDOW_TYPE = 'valid'
 
 #training constants
-BATCH_SIZE = 32
-NUM_EPOCHS = 5
+BATCH_SIZE = 64
+NUM_EPOCHS = 1
 
+#other
+DROPOUT_DENSE = 0.5
+OPTIMIZER = 'rmsprop'
+LOSS = 'binary_crossentropy'
+LEARNING_RATE = 0.001
+PADDING = "var"
 
-def main(Y, vocab_min, model_path, dataset):
+def main(Y, vocab_min, dataset):
     """
         main function which sequentially loads the data, builds the model, trains, evaluates, writes output, etc.
     """
-    cnn = build_model(Y)
-    #cnn = build_model_multiwindow(Y, 3, 5, 1)
-    #cnn = build_model_multiconv(Y)
+    if MULTI_WINDOW:
+        cnn = build_model_multiwindow(Y, MIN_FILTER, MAX_FILTER)
+    else:
+        cnn = build_model(Y)
 
     history = []
+    names = ["acc", "prec", "rec", "f1", "auc"]
+    names.extend(["%s_micro" % (name) for name in names])
+    metrics_hist = {name: [] for name in names}
+    metrics_hist_tr = {name: [] for name in names}
     for i in range(NUM_EPOCHS):
         hist = train(cnn, i, dataset, Y)
         history.append(hist)
         metrics, fpr, tpr = test("dev", cnn, dataset, Y, print_samples=True)
-        print
-    	print("[MACRO] accuracy, precision, recall, f-measure, AUC")
-    	print(metrics["acc"], metrics["prec"], metrics["rec"], metrics["f1"], metrics["auc"])
-    	print("[MICRO] accuracy, precision, recall, f-measure, AUC")
-    	print(metrics["acc_micro"], metrics["prec_micro"], metrics["rec_micro"], metrics["f1_micro"], metrics["auc_micro"])
-        print
+        print_metrics(metrics)
+        for name in names:
+            metrics_hist[name].append(metrics[name])
+
 
         print("sanity check on train")
         metrics_t, fpr_t, tpr_t = test("train", cnn, dataset, Y)
-        print
-    	print("[MACRO] accuracy, precision, recall, f-measure, AUC")
-    	print(metrics_t["acc"], metrics_t["prec"], metrics_t["rec"], metrics_t["f1"], metrics_t["auc"])
-    	print("[MICRO] accuracy, precision, recall, f-measure, AUC")
-    	print(metrics_t["acc_micro"], metrics_t["prec_micro"], metrics_t["rec_micro"], metrics_t["f1_micro"], metrics_t["auc_micro"])
-        print
-    
-    cnn.save(model_path)
+        print_metrics(metrics_t)
+        for name in names:
+            metrics_hist_tr[name].append(metrics_t[name])
+    #save metric history, model, params
+    model_dir = "models/" + '_'.join(['cnn', time.strftime('%b_%d_%H:%M', time.gmtime())])
+    os.mkdir(model_dir)
+
+    save_metrics(metrics_hist, metrics_hist_tr, model_dir)
+    save_params(model_dir, Y, vocab_min, dataset)
+    cnn.save(model_dir + "/model.h5")
 
 def build_model(Y):
     """
@@ -78,14 +94,14 @@ def build_model(Y):
             cnn: the CNN model
     """
     cnn = Sequential()
-    cnn.add(Embedding(VOCAB_SIZE, EMBEDDING_SIZE, dropout=DROPOUT_EMBED))
-    cnn.add(Convolution1D(Y*CONV_DIM_FACTOR, FILTER_SIZE, activation='tanh'))
+    cnn.add(Embedding(VOCAB_SIZE, EMBEDDING_SIZE, dropout=DROPOUT_EMBED, init=EMBED_INIT))
+    cnn.add(Convolution1D(Y*CONV_DIM_FACTOR, FILTER_SIZE, activation=ACTIVATION_CONV))
     from keras.layers.pooling import GlobalMaxPooling1D
     cnn.add(GlobalMaxPooling1D())
     cnn.add(Dense(Y))
     cnn.add(Dropout(DROPOUT_DENSE))
     cnn.add(Activation('sigmoid'))
-    cnn.compile(optimizer='rmsprop', loss='binary_crossentropy')
+    cnn.compile(optimizer=OPTIMIZER, loss=LOSS)
     print(cnn.summary())
     print
     return cnn 
@@ -119,7 +135,7 @@ def build_model_multiwindow(Y, s, l, step):
 
     #add the conv layers
     for i,sz in enumerate(range(s, l+1, step)):
-        convs[i].add(Convolution1D(Y*CONV_DIM_FACTOR, sz, activation='tanh'))
+        convs[i].add(Convolution1D(Y*CONV_DIM_FACTOR, sz, activation=ACTIVATION_CONV))
         from keras.layers.pooling import GlobalMaxPooling1D
         convs[i].add(GlobalMaxPooling1D())
 
@@ -131,7 +147,7 @@ def build_model_multiwindow(Y, s, l, step):
     cnn_multi.add(Dropout(DROPOUT_DENSE))
     cnn_multi.add(Activation('sigmoid'))
     
-    cnn_multi.compile(optimizer='rmsprop', loss='binary_crossentropy')
+    cnn_multi.compile(optimizer=OPTIMIZER, loss=LOSS)
     print(cnn_multi.summary())
     return cnn_multi
 
@@ -150,6 +166,8 @@ def train(cnn, epoch, dataset, Y, print_weights=False):
     for idx, (X_batch, Y_batch) in enumerate(data_generator('../mimicdata/notes_%s_train_%s_sorted.csv'\
                                                                 % (str(Y), dataset),\
                                                             BATCH_SIZE, Y)):
+        if (X_batch.shape[1] < FILTER_SIZE):
+            continue
         loss = cnn.train_on_batch(X_batch, Y_batch)
         if idx % 500 == 0:
             print('Train Epoch: {} [batch #{}, batch_size {}, seq length {}]\tLoss: {}'.format(
@@ -180,9 +198,11 @@ def test(fold, cnn, dataset, Y, max_iter = 1e9, print_samples=False):
                                                            BATCH_SIZE, Y)):
         if idx >= max_iter:
             break
+        if X_batch.shape[1] < FILTER_SIZE:
+            continue
         Y_hat = cnn.predict_on_batch(X_batch)
 
-        if np.random.rand() > 0.995 and print_samples:
+        if np.random.rand() > 0.999 and print_samples:
             print("sample prediction")
             print("Y_true: " + str(Y_batch[0]))
             print("Y_hat: " + str(Y_hat[0]))
@@ -201,15 +221,6 @@ def test(fold, cnn, dataset, Y, max_iter = 1e9, print_samples=False):
     metrics, fpr_tot, tpr_tot = evaluation.all_metrics(Y_hat_tot, Y_tot)
 
     return metrics, fpr_tot, tpr_tot
-
-def evaluate(cnn, X_dv, Y_dv):
-    #predict, threshold, and get (macro) metrics
-    preds = cnn.predict(X_dv)
-    preds[preds >= 0.5] = 1
-    preds[preds < 0.5] = 0
-
-    metrics, fpr, tpr = evaluation.all_metrics(preds, Y_dv)
-    return preds, metrics, fpr, tpr
 
 def plot_auc(fpr, tpr, roc_auc):
     #plot the AUC values for current visualization
@@ -240,11 +251,6 @@ def write_auc(fpr, tpr, roc_auc, Y):
 
             auc_line = [str(label), 'auc', str(roc_auc[label])]
             outfile.write(','.join(auc_line) + "\n")
-
-def get_version():
-    #use the older version of keras when not running on my pc
-    import socket
-    return ("james" not in socket.gethostname())
 
 def write_preds(preds, filename):
     #write predictions to a csv
@@ -302,12 +308,38 @@ def load_lookups(Y, vocab_min):
         next(lr)
         for row in lr:
             c_dict[int(row[0])] = row[1]
-    return (v_dict, c_dict)    
+    return (v_dict, c_dict)   
+
+def print_metrics(metrics):
+    print
+    print("[MACRO] accuracy, precision, recall, f-measure, AUC")
+    print(metrics["acc"], metrics["prec"], metrics["rec"], metrics["f1"], metrics["auc"])
+    print("[MICRO] accuracy, precision, recall, f-measure, AUC")
+    print(metrics["acc_micro"], metrics["prec_micro"], metrics["rec_micro"], metrics["f1_micro"], metrics["auc_micro"])
+    print
+
+def save_metrics(metrics_hist, metrics_hist_tr, model_dir):
+    with open(model_dir + "/metrics.json", 'w') as metrics_file:
+        data = metrics_hist.copy()
+        data.update({"%s_tr" % (name):val for (name,val) in metrics_hist_tr.items()})
+        json.dump(data, metrics_file, indent=1)
+
+def save_params(model_dir, Y, vocab_min, dataset):
+    with open(model_dir + "/params.json", 'w') as params_file:
+        param_names = ["Y", "dataset", "Num epochs", "Vocab size", "Embedding size", "Embed dropout", "Conv activation", "Conv window size",
+                "Conv window type", "Conv output size", "Dense dropout", "Optimizer", "Loss", "Embed init", "Learning rate",
+                "Padding", "Vocab min occurrences"]
+        filter_size = FILTER_SIZE if not MULTI_WINDOW else ';'.join([str(i) for i in range(MIN_FILTER, MAX_FILTER + 1)])
+        param_vals = [Y, dataset, NUM_EPOCHS, VOCAB_SIZE, EMBEDDING_SIZE, DROPOUT_EMBED, ACTIVATION_CONV, filter_size, WINDOW_TYPE, 
+                CONV_DIM_FACTOR*Y, DROPOUT_DENSE, OPTIMIZER, LOSS, EMBED_INIT, LEARNING_RATE, PADDING, vocab_min]
+        data = {name: str(val) for (name,val) in zip(param_names, param_vals)}
+        json.dump(data, params_file, indent=1)
+
 
 if __name__ == "__main__":
     #just take in the label set size
-    if len(sys.argv) < 4:
-        print("usage: python " + str(os.path.basename(__file__) + " [|Y|] [vocab_min] [model_path] [dataset (single or full)]"))
+    if len(sys.argv) < 3:
+        print("usage: python " + str(os.path.basename(__file__) + " [|Y|] [vocab_min] [dataset (single or full)]"))
         sys.exit(0)
-    main(int(sys.argv[1]), int(sys.argv[2]), sys.argv[3], sys.argv[4])
+    main(int(sys.argv[1]), int(sys.argv[2]), sys.argv[3])
 

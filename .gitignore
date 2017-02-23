@@ -1,0 +1,6 @@
+*.h5
+*.csv
+*.pyc
+*.golds
+*.preds
+models/*
