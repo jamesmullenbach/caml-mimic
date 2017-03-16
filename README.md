@@ -27,14 +27,3 @@
 * dataproc/split_data.py - splits notes into train/dev/test based on # subjects (50/25/25 split)
 * dataproc/split_labels.py - splits labels '' '' '' ''
 * dataproc/vocab_select.py - map words in the notes to indices
-
-##Results
-https://docs.google.com/spreadsheets/d/13UoXWHSjJS5RvANIV-pDEpuVoCd_q0z8YiJ9SyPDA-w/edit?usp=sharing
-
-##TODO:
-* implement warp loss (probably ~~switching to PyTorch in the process~~)
-* ~~compare nn models to baseline/LR for 100-label dataset~~
-* Pre-train embeddings on the full dataset
-* Create datasets for smaller/larger vocabs
-* more NN tweaks (initializations, activations, optimizers)
-* different architectures (stacked RNN, CNN over notes -> RNN across time)
