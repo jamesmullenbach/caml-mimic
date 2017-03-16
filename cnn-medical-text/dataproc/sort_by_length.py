@@ -9,6 +9,8 @@ import sys
 
 import pandas as pd
 
+from constants import DATA_DIR
+
 def main(filename):
 	sort(filename)
 

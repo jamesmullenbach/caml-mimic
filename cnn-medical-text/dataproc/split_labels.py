@@ -9,6 +9,8 @@ import sys
 import numpy as np
 import pandas as pd
 
+from constants import DATA_DIR
+
 TRAIN_PCT = 0.5
 DEV_PCT = 0.25
 TEST_PCT = 0.25
@@ -17,20 +19,20 @@ def main(Y):
 
 	#select which indices go to which set
 	print("finding unique subject ids")
-	num_subjects = len(pd.read_csv('../mimicdata/labels_' + str(Y) + '_filtered.csv', usecols=['SUBJECT_ID'], squeeze=True).unique())
+	num_subjects = len(pd.read_csv('%s/labels_%s_filtered.csv' % (DATA_DIR, Y), usecols=['SUBJECT_ID'], squeeze=True).unique())
 	print("finding unique codes and building lookup table")
-	codes = pd.read_csv('../mimicdata/labels_' + str(Y) + '_filtered.csv', usecols=['ICD9_CODE'], squeeze=True).unique()
+	codes = pd.read_csv('%s/labels_%s_filtered.csv' % (DATA_DIR, Y), usecols=['ICD9_CODE'], squeeze=True).unique()
 	c_dict = {code: np.where(codes==code)[0][0] for code in codes}
 
 	#create and write headers for train, dev, test
-	train_file = open('../mimicdata/labels_' + str(Y) + '_train.csv', 'w')
-	dev_file = open('../mimicdata/labels_' + str(Y) + '_dev.csv', 'w')
-	test_file = open('../mimicdata/labels_' + str(Y) + '_test.csv', 'w')
+	train_file = open('%s/labels_%s_train.csv' % (DATA_DIR, Y), 'w')
+	dev_file = open('%s/labels_%s_dev.csv' % (DATA_DIR, Y), 'w')
+	test_file = open('%s/labels_%s_test.csv' % (DATA_DIR, Y), 'w')
 	train_file.write(','.join(['SUBJECT_ID', 'ICD9_CODE']) + "\n")
 	dev_file.write(','.join(['SUBJECT_ID', 'ICD9_CODE']) + "\n")
 	test_file.write(','.join(['SUBJECT_ID', 'ICD9_CODE']) + "\n")
 
-	with open('../mimicdata/labels_' + str(Y) + '_filtered.csv', 'r') as notesfile:
+	with open('%s/labels_%s_filtered.csv' % (DATA_DIR, Y), 'r') as notesfile:
 		reader = csv.reader(notesfile)
 		next(reader)
 		i = 0
@@ -46,7 +48,7 @@ def main(Y):
 				subj_seen += 1
 				cur_subj = subj_id
 
-			code_ind = c_dict[int(row[1])]
+			code_ind = c_dict[row[2]]
 
 			if subj_seen < num_subjects * TRAIN_PCT:
 				train_file.write(','.join([row[0], str(code_ind)]) + "\n")

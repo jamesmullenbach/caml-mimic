@@ -102,3 +102,11 @@ def union_size(yhat, y, axis):
 def intersect_size(yhat, y, axis):
 	#axis=0 for label-level union (micro). axis=1 for instance-level (macro)
 	return np.logical_and(yhat, y).sum(axis=axis).astype(float)
+
+def print_metrics(metrics):
+    print
+    print("[MACRO] accuracy, precision, recall, f-measure, AUC")
+    print(metrics["acc"], metrics["prec"], metrics["rec"], metrics["f1"], metrics["auc"])
+    print("[MICRO] accuracy, precision, recall, f-measure, AUC")
+    print(metrics["acc_micro"], metrics["prec_micro"], metrics["rec_micro"], metrics["f1_micro"], metrics["auc_micro"])
+    print

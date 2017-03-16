@@ -6,9 +6,11 @@ import os
 import pandas as pd
 import sys
 
+from constants import DATA_DIR
+
 def main(Y):
 	print("reading data")
-	df = pd.read_csv('../mimicdata/notes_' + str(Y) + '.csv',
+	df = pd.read_csv('%s/notes_%s.csv' % (DATA_DIR, Y),
 					 parse_dates=['CHARTTIME'],
 					 infer_datetime_format=True)
 
@@ -18,8 +20,8 @@ def main(Y):
 	print("sorting")
 	df = df.sort(['SUBJECT_ID', 'CHARTTIME'])
 
-	print("writing output")
-	df.to_csv('../mimicdata/notes_' + str(Y) + '_sorted.csv', index=False)
+	print("writing output to %s/notes_%s_sorted.csv" % (DATA_DIR, Y))
+	df.to_csv('%s/notes_%s_sorted.csv' % (DATA_DIR, Y), index=False)
 
 if __name__ == "__main__":
 	if len(sys.argv) < 2:

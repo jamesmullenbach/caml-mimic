@@ -9,14 +9,16 @@ import sys
 
 import pandas as pd
 
+from constants import DATA_DIR
+
 def main(Y):
 
-	note_subjects = pd.read_csv('../mimicdata/notes_' + str(Y) + '_sorted.csv', usecols=['SUBJECT_ID'], squeeze=True).unique()
+	note_subjects = pd.read_csv('%s/notes_%s_sorted.csv' % (DATA_DIR, Y), usecols=['SUBJECT_ID'], squeeze=True).unique()
 	print(len(note_subjects))
 
 	print("Filtering patients list")
-	with open('../mimicdata/patients_' + str(Y) + '.csv', 'r') as patientfile:
-		with open('../mimicdata/patients_' + str(Y) + '_filtered.csv', 'w') as filteredfile:
+	with open('%s/patients_%s.csv' % (DATA_DIR, Y), 'r') as patientfile:
+		with open('%s/patients_%s_filtered.csv' % (DATA_DIR, Y), 'w') as filteredfile:
 			reader = csv.reader(patientfile)
 			next(reader)
 			filteredfile.write('SUBJECT_ID\n')
@@ -26,11 +28,11 @@ def main(Y):
 					filteredfile.write(str(subj_id) + '\n')
 
 	print("Filtering labels list")
-	with open('../mimicdata/labels_' + str(Y) + '.csv', 'r') as labelfile:
-		with open('../mimicdata/labels_' + str(Y) + '_filtered.csv', 'w') as filteredfile:
+	with open('%s/labels_%s_w_times.csv' % (DATA_DIR, Y), 'r') as labelfile:
+		with open('%s/labels_%s_filtered.csv' % (DATA_DIR, Y), 'w') as filteredfile:
 			reader = csv.reader(labelfile)
 			next(reader)
-			filteredfile.write('SUBJECT_ID,ICD9_CODE,ADMITTIME,DISCHTIME\n')
+			filteredfile.write('SUBJECT_ID,HADM_ID,ICD9_CODE,ADMITTIME,DISCHTIME\n')
 			for row in reader:
 				subj_id = int(row[0])
 				if subj_id in note_subjects:
