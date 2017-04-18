@@ -1,0 +1,69 @@
+3/21/17
+    just doing a single fold for many epochs
+    kim's implementation gets 81.5 test acc averaged across all folds
+        each fold gets around 81.0-82.0%
+        so one fold should put me in that range
+    but it sucks
+        - it is not the accuracy calculation, it really is bad
+        - now checking the weights
+            - Looks like they aren't updating for embedding layer
+            - checking fc layer
+                - they're changing... barely
+            - Okay I was using way the wrong (starting) LR for adadelta, fixed that now (using default)
+            - embed weights still don't update, graph is disconnected 
+    also cloned other guys pytorch impl and trying to get it to work, running into unicode errors even tho im on py3
+    going to try dropping in this guy's model only
+        - that mostly worked
+        - dev acc plateauing at 79% during first fold
+        - test acc got to 79%
+            - Wait so actually I got that with random starting vectors?!
+        - Used Adam over Adadelta since Adadelta wasn't converging very fast...?
+        - Still going to check weight variances, etc.
+            - they are increasing monotonically
+            - check if same things happen in Kim's impl
+            - Kim's variance and norm values look similar (proportionally to each other), but rise much faster
+            - var/norm values for embedding layer not same at start...
+                - Kim's start at .03 variance, 412 norm
+                - I'm at .02 variance, 342 norm
+                - Kim fc: .000087 var, .2291 norm. My fc: .0001 var, .3517 norm
+        - Should also maybe check Adadelta impl's
+            - Didn't look super deep into it, but empirically I dont' trust pytorch's implementation...
+            - Looks like lr is added, not multiplied, so I'm trying setting it to 0.0
+                - jk it's multiplied... damn pytorch syntax
+            - Okay as far as I can tell they're essentially the same
+                - Did not dig into how pytorch accumulates though
+            - Looks like they're effectively the same now that my conv layers are properly updating
+        - Will make initialization the same for conv, fc layers too
+            - did this, looks similar... final results TBD
+        - I think s might supposed to be 3?
+            - pytorch renorm() doesn't apply to the whole weight matrix? It just does per-dimension
+            - but maybe I can make it operate on the whole matrix
+            - what i did is basically frobenius norm which is actually probably not right?
+            - in that case IDK what is right then.. idk what kim did
+                - Okay he applied the norm limit to each column, so my previous way was right
+            - Regardless, making the limit very high didn't seem to change much, so this probably doesn't matter too much
+        - Should also probably re-revisit cross-validation.... why is his dev error so high after the first fold?
+            - You make a new model every time? thats what kim does
+                - I'm still not doing it right
+            - I literally blow at machine learning
+        - Kim enforces norm constraint on every layer
+            - I need to do this for conv layers, and also check starting norms/variances for the conv layers
+            - TODO
+        - How are updates propagating through embeddings but not the conv layers????
+            - Gonna try to debug this with vanilla conv
+            - vanilla conv update works, obvs...
+            - Should try to get other guy's code to run to see if it really works
+        - Bridging the gap:
+            - Retry/recheck the shuffling between epochs
+            - checking random seed now to see if he gets same results
+                - Seems like it
+                - Variances may be different?
+                - (KIM) after 25 epochs: 
+                    embed var ~.03, norm ~412
+                    conv1 var ~.0018, norm ~16
+                    conv2 var ~.0019, norm ~15
+                    conv3 var ~.0016, norm ~12
+                    fc var ~.187, norm ~10.6
+                - (ME) after 25 epochs:
+                    
+        - Aight shit works

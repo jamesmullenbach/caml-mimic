@@ -1,0 +1,36 @@
+want to save admission id's used to split
+need to just redo data processing from the beginning
+    like, including the sql stuff cause none of the files have admission ID
+
+
+one day I'll memorize the order...
+OLD:
+get_notes -> group_and_sort -> split_data, filter_patients_and_labels -> split_labels, build_vocab, concat_notes_labels
+    -> vocab_select -> longest_note, sort_by_length
+
+NEW:
+get_notes -> group_and_sort -> filter_patients_and_labels -> concat_and_split -> build_vocab -> vocab_select -> stitch_notes 
+    -> sort_by_length
+
+ATTN MODEL:
+get_notes -> group_and_sort -> filter_patients_and_labels -> concat_and_split -> build_vocab -> vocab_select
+    -> script that gets # notes per admission and also sorts by that
+
+T+1:
+output of stitch_notes (stitched, subject-time-sorted) -> build_future_data
+    - redo vocab stuff? just using vocab from before... meh
+
+TODO 
+    think more about file names... 
+    Ideally, I want to just keep:
+        NOTEEVENTS.csv ("raw")
+        notes_Y.csv ("processed")
+        vocab and label files, obviously
+        notes_Y_split.csv ("train/dev/test") data ready for models
+        whatever other files are needed by any generators I write
+            notes_Y_split_num_notes.csv
+    basically, I should jst remove eerything that isn't that
+    notes_Y_split.csv is assumed to be:
+        - full vocabulary
+        - consists of notes for a patient-admission, concatenated together
+        - sorted length order

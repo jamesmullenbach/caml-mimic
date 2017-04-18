@@ -13,6 +13,7 @@ from collections import defaultdict
 import cPickle
 import csv
 import argparse
+import json
 import os
 import numpy as np
 import sys
@@ -28,87 +29,80 @@ def main(model_name, n_epochs, norm_constraint, filter_size, min_filter, max_fil
     revs, W, W2, word_idx_map, vocab = x[0], x[1], x[2], x[3], x[4]
     print "data loaded!"
     idx_word_map = {idx: word for word, idx in word_idx_map.iteritems()}
-
-    if model_name == "cnn_multi":
-        model = models.MultiConv(torch.FloatTensor(W2), min_filter, max_filter, num_filter_maps, norm_constraint)
-        if gpu:
-            model.cuda()
-    elif model_name == "cnn_vanilla":
-        model = models.VanillaConv(torch.FloatTensor(W2), filter_size, num_filter_maps)
-        if gpu:
-            model.cuda()
-
-    optimizer = optim.Adadelta(model.parameters(), rho=0.95)
     batch_size = BATCH_SIZE
   
     test_bows = []
     train_bows = []
     dev_bows = []
+    test_accs = []
+    final_train_losses = []
     for fold in range(10-1):
+        if model_name == "cnn_multi":
+            model = models.MultiConv(torch.FloatTensor(W), min_filter, max_filter, num_filter_maps, norm_constraint)
+            if gpu:
+                model.cuda()
+        elif model_name == "cnn_vanilla":
+            model = models.VanillaConv(torch.FloatTensor(W), filter_size, num_filter_maps, norm_constraint)
+            if gpu:
+                model.cuda()
+
+        optimizer = optim.Adadelta(model.parameters(), rho=0.95, lr=1.0)
+
+        ###### CODE LIFTED FROM YOON KIM ######
         datasets = make_idx_data_cv(revs, word_idx_map, fold, max_l=56, k=300, filter_h=5)
-#        datasets = make_idx_data_cv(revs, word_idx_map, fold, max_l=56, k=300, filter_h=5)
         img_h = len(datasets[0][0]) - 1
-        test_set_x = datasets[2][:,:img_h]
-        test_set_y = np.asarray(datasets[2][:,-1],"int64")
         np.random.seed(3435)
-#        if datasets[0].shape[0] % batch_size > 0:
-#            print("padding with multiple data")
-#            extra_data_num = batch_size - datasets[0].shape[0] % batch_size
-#            #permute rows
-#            train_set = np.random.permutation(datasets[0])   
-#            extra_data = train_set[:extra_data_num]
-#            new_data=np.append(datasets[0],extra_data,axis=0)
-#        else:
-#            new_data = datasets[0]
-#        new_data = datasets[0]
-        new_data = np.random.permutation(datasets[0])
+        if datasets[0].shape[0] % batch_size > 0:
+            print("padding with multiple data")
+            extra_data_num = batch_size - datasets[0].shape[0] % batch_size
+            #permute rows
+            train_set = np.random.permutation(datasets[0])   
+            extra_data = train_set[:extra_data_num]
+            new_data=np.append(datasets[0],extra_data,axis=0)
+        else:
+            new_data = datasets[0]
+        new_data = np.random.permutation(new_data)
 
         n_batches = new_data.shape[0]/batch_size
         n_train_batches = int(np.round(n_batches*0.9))
 
-#        train_set = new_data[:n_train_batches*batch_size,:]
-#        val_set = new_data[n_train_batches*batch_size:,:]
-        train_set = new_data
-        val_set = np.random.permutation(datasets[1])
+        test_set_x = datasets[1][:,:img_h]
+        test_set_y = np.asarray(datasets[1][:,-1],"int64")
+        train_set = new_data[:n_train_batches*batch_size,:]
+        val_set = new_data[n_train_batches*batch_size:,:]
         print("size of train set: " + str(train_set.shape))
         print("size of val set: " + str(val_set.shape))
         train_set_x, train_set_y = train_set[:,:img_h], train_set[:,-1]
         val_set_x, val_set_y = val_set[:,:img_h], val_set[:,-1]
-#        for i in range(0, val_set_x.shape[0], BATCH_SIZE):
-#            if np.equal(val_set_y[i:i+BATCH_SIZE], 0).all():
-#                print("val labels all 0. size: " + str(val_set_y[i:i+BATCH_SIZE]))
-#        for i,sent in enumerate(train_set_x):
-#            for i2, sent2 in enumerate(val_set_x):
-#                if np.equal(sent, sent2).all():
-#                    print("match w/ train and dev: fold: %d" % (fold))
-#        for i, sent in enumerate(test_set_x):
-#            for i2, sent2 in enumerate(train_set_x):
-#                if np.equal(sent, sent2).all():
-#                    print("match w/ test and train: fold: %d" % (fold))
-#            for i3, sent3 in enumerate(val_set_x):
-#                if np.equal(sent, sent3).all():
-#                    print("match w/ test and dev: fold: %d" % (fold))
-        best_val_perf = 0.
+        ##### END CODE LIFTED #####
+        best_val_acc = 0.
         for epoch in range(n_epochs): 
     
-            tr_acc, tr_loss = train(train_set_x, train_set_y, model, optimizer, epoch, fold, gpu)
-            print("epoch: %d, fold: %d, tr_acc: %f, 'perf': %.2f" % (epoch, fold, tr_acc, 100.*(1.-tr_loss)))
+            tr_acc, tr_loss = train(train_set_x, train_set_y, model, optimizer, epoch, fold, gpu, idx_word_map)
+
+            print("epoch: %d, fold: %d, tr_acc: %f" % (epoch, fold, tr_acc))
             dv_acc, dv_loss, failed_examples = test(val_set_x, val_set_y, model, epoch, gpu, idx_word_map)
-            dv_perf = 100.*(1.-dv_loss)
-            print("epoch: %d, fold: %d, dv_acc: %f, 'perf': %.2f" % (epoch, fold, dv_acc, dv_perf))
+            print("epoch: %d, fold: %d, dv_acc: %f" % (epoch, fold, dv_acc))
             if len(failed_examples) > 0:
                 print("failed example: " + str(failed_examples[0]))
-            if dv_perf > best_val_perf:
-                best_val_perf = dv_perf
+            if dv_acc > best_val_acc:
+                best_val_acc = dv_acc
                 test_acc, test_loss, _ = test(test_set_x, test_set_y, model, epoch, gpu, idx_word_map)
-                print("epoch: %d, test_acc: %f, 'perf': %.2f" % (epoch, test_acc, 100.*(1.-test_loss)))
+                print("epoch: %d, test_acc: %f" % (epoch, test_acc))
 
         test_acc, test_loss, failed_examples = test(test_set_x, test_set_y, model, epoch, gpu, idx_word_map)
-        print("\nFINAL TEST fold: %d, test_acc: %f, 'perf': %.2f\n" % (fold, test_acc, 100.*(1.-test_loss)))
+        print("\nFINAL TEST fold: %d, test_acc: %f\n" % (fold, test_acc))
+        test_accs.append(test_acc)
+        final_train_losses.append(tr_loss)
         if len(failed_examples) > 0:
             print("failed example: " + str(failed_examples[0]))
+    print("test accs: " + str(test_accs))
+    print("train losses: " + str(final_train_losses))
+    x = {"test accs": test_accs, "train losses": final_train_losses}
+    with open("results.json", 'w') as f:
+        json.dump(x, f, indent=1)
 
-def train(x, y, model, optimizer, epoch, fold, gpu):
+def train(x, y, model, optimizer, epoch, fold, gpu, idx_word_map):
     #put model in "train" mode
     model.train()
     y_true = []
@@ -168,10 +162,10 @@ def test(x, y, model, epoch, gpu, idx_word_map):
         target_data = target.data.cpu().numpy()
 
         output = np.argmax(output, axis=1)
-        if np.random.rand() > 0.999999:
+        if np.random.rand() > 0.99999999:
             print("output: " + str(output))
             print("target: " + str(target_data))
-        if np.not_equal(output, target_data).any() and np.random.rand() > 0.999999:
+        if np.not_equal(output, target_data).any() and np.random.rand() > 0.99999999:
             print("output: " + str(output))
             print("target: " + str(target_data))
             inds = np.where(np.not_equal(output, target_data))[0]
@@ -187,7 +181,7 @@ def test(x, y, model, epoch, gpu, idx_word_map):
 
     y_true = np.concatenate(y_true, axis=0)
     y_hat = np.concatenate(y_hat, axis=0)
-    if np.random.rand() > 0.99999:
+    if np.random.rand() > 0.9999999:
         print("ytru: " + str(y_true))
         print("yhat: " + str(y_hat))
     acc = np.equal(y_true, y_hat).sum() / float(len(y_true))
@@ -209,23 +203,23 @@ def get_idx_from_sent(sent, word_idx_map, max_l=51, k=300, filter_h=5):
         x.append(0)
     return x
 
+##### CODE LIFTED FROM YOON KIM #####
 def make_idx_data_cv(revs, word_idx_map, cv, max_l=51, k=300, filter_h=5):
     """
     Transforms sentences into a 2-d matrix.
     """
-    train, val, test = [], [], []
+    train, test = [], []
     for rev in revs:
         sent = get_idx_from_sent(rev["text"], word_idx_map, max_l, k, filter_h)
         sent.append(rev["y"])
         if rev["split"]==cv:
-            val.append(sent)
-        elif rev["split"] == 9:
             test.append(sent)
         else:
             train.append(sent)
     train = np.array(train,dtype="int")
     test = np.array(test,dtype="int")
-    return [train, val, test]
+    return [train, test]
+##### END LIFTED CODE #####
 
 def check_args(args):
     if args.model == "saved" and args.saved_dir is None:

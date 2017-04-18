@@ -3,4 +3,6 @@
 *.pyc
 *.golds
 *.preds
+*.swp
+.ipynb_checkpoints/*
 models/*

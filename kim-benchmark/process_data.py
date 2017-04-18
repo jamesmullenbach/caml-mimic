@@ -1,7 +1,11 @@
+"""
+    This entire file lifted from Yoon Kim
+"""
 import numpy as np
-import re
-import itertools
-from collections import Counter
+import cPickle
+from collections import defaultdict
+import sys, re
+import pandas as pd
 
 def build_data_cv(data_folder, cv=10, clean_string=True):
     """
@@ -51,7 +55,7 @@ def get_W(word_vecs, k=300):
     """
     vocab_size = len(word_vecs)
     word_idx_map = dict()
-    W = np.zeros(shape=(vocab_size+1, k), dtype='float32')
+    W = np.zeros(shape=(vocab_size+1, k), dtype='float32')            
     W[0] = np.zeros(k, dtype='float32')
     i = 1
     for word in word_vecs:
@@ -93,64 +97,53 @@ def add_unknown_words(word_vecs, vocab, min_df=1, k=300):
         if word not in word_vecs and vocab[word] >= min_df:
             word_vecs[word] = np.random.uniform(-0.25,0.25,k)  
 
-
-
-def clean_str(string):
+def clean_str(string, TREC=False):
     """
     Tokenization/string cleaning for all datasets except for SST.
-    Original taken from https://github.com/yoonkim/CNN_sentence/blob/master/process_data.py
+    Every dataset is lower cased except for TREC
     """
-    string = re.sub(r"[^A-Za-z0-9(),!?\'\`]", " ", string)
-    string = re.sub(r"\'s", " \'s", string)
-    string = re.sub(r"\'ve", " \'ve", string)
-    string = re.sub(r"n\'t", " n\'t", string)
-    string = re.sub(r"\'re", " \'re", string)
-    string = re.sub(r"\'d", " \'d", string)
-    string = re.sub(r"\'ll", " \'ll", string)
-    string = re.sub(r",", " , ", string)
-    string = re.sub(r"!", " ! ", string)
-    string = re.sub(r"\(", " \( ", string)
-    string = re.sub(r"\)", " \) ", string)
-    string = re.sub(r"\?", " \? ", string)
-    string = re.sub(r"\s{2,}", " ", string)
+    string = re.sub(r"[^A-Za-z0-9(),!?\'\`]", " ", string)     
+    string = re.sub(r"\'s", " \'s", string) 
+    string = re.sub(r"\'ve", " \'ve", string) 
+    string = re.sub(r"n\'t", " n\'t", string) 
+    string = re.sub(r"\'re", " \'re", string) 
+    string = re.sub(r"\'d", " \'d", string) 
+    string = re.sub(r"\'ll", " \'ll", string) 
+    string = re.sub(r",", " , ", string) 
+    string = re.sub(r"!", " ! ", string) 
+    string = re.sub(r"\(", " \( ", string) 
+    string = re.sub(r"\)", " \) ", string) 
+    string = re.sub(r"\?", " \? ", string) 
+    string = re.sub(r"\s{2,}", " ", string)    
+    return string.strip() if TREC else string.strip().lower()
+
+def clean_str_sst(string):
+    """
+    Tokenization/string cleaning for the SST dataset
+    """
+    string = re.sub(r"[^A-Za-z0-9(),!?\'\`]", " ", string)   
+    string = re.sub(r"\s{2,}", " ", string)    
     return string.strip().lower()
 
-
-def load_data_and_labels(positive_data_file, negative_data_file):
-    """
-    Loads MR polarity data from files, splits the data into words and generates labels.
-    Returns split sentences and labels.
-    """
-    # Load data from files
-    positive_examples = list(open(positive_data_file, "r").readlines())
-    positive_examples = [s.strip() for s in positive_examples]
-    negative_examples = list(open(negative_data_file, "r").readlines())
-    negative_examples = [s.strip() for s in negative_examples]
-    # Split by words
-    x_text = positive_examples + negative_examples
-    x_text = [clean_str(sent) for sent in x_text]
-    # Generate labels
-    positive_labels = [[0, 1] for _ in positive_examples]
-    negative_labels = [[1, 0] for _ in negative_examples]
-    y = np.concatenate([positive_labels, negative_labels], 0)
-    return [x_text, y]
-
-
-def batch_iter(data, batch_size, num_epochs, shuffle=True):
-    """
-    Generates a batch iterator for a dataset.
-    """
-    data = np.array(data)
-    data_size = len(data)
-    num_batches_per_epoch = int((len(data)-1)/batch_size) + 1
-    for epoch in range(num_epochs):
-        # Shuffle the data at each epoch
-        if shuffle:
-            shuffle_indices = np.random.permutation(np.arange(data_size))
-            shuffled_data = data[shuffle_indices]
-        else:
-            shuffled_data = data
-        for batch_num in range(num_batches_per_epoch):
-            start_index = batch_num * batch_size
-            end_index = min((batch_num + 1) * batch_size, data_size)
-            yield shuffled_data[start_index:end_index]
+if __name__=="__main__":    
+    w2v_file = sys.argv[1]     
+    data_folder = ["rt-polarity.pos","rt-polarity.neg"]    
+    print "loading data...",        
+    revs, vocab = build_data_cv(data_folder, cv=10, clean_string=True)
+    max_l = np.max(pd.DataFrame(revs)["num_words"])
+    print "data loaded!"
+    print "number of sentences: " + str(len(revs))
+    print "vocab size: " + str(len(vocab))
+    print "max sentence length: " + str(max_l)
+    print "loading word2vec vectors...",
+    w2v = load_bin_vec(w2v_file, vocab)
+    print "word2vec loaded!"
+    print "num words already in word2vec: " + str(len(w2v))
+    add_unknown_words(w2v, vocab)
+    W, word_idx_map = get_W(w2v)
+    rand_vecs = {}
+    add_unknown_words(rand_vecs, vocab)
+    W2, _ = get_W(rand_vecs)
+    cPickle.dump([revs, W, W2, word_idx_map, vocab], open("mr.p", "wb"))
+    print "dataset created!"
+    

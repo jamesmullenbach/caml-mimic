@@ -1,6 +1,7 @@
 """
     Simply takes in a raw (NOTEEVENTS) or processed (output of get_notes) file and outputs
     only the text into a .txt
+    Using this to try to train VarEmbed
 """
 import csv
 import os

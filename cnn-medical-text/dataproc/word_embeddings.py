@@ -64,7 +64,7 @@ class ProcessedIter(object):
             r = csv.reader(f)
             next(r)
             for row in r:
-                yield unicode(row[2]).split()
+                yield unicode(row[3]).split()
 
 def main(Y, data, min_count, n_iter):
     if data == "raw":
@@ -83,12 +83,13 @@ def main(Y, data, min_count, n_iter):
 #        if i > 1:
 #            break
 #        print(sent)
-    model = w2v.Word2Vec(size=EMBEDDING_SIZE, min_count=min_count, workers=4)
+    model = w2v.Word2Vec(size=EMBEDDING_SIZE, min_count=min_count, workers=4, iter=n_iter)
     print("building word2vec vocab...")
     model.build_vocab(sentences)
     print("training...")
-    for i in range(n_iter):
-        model.train(sentences)
+    model.train(sentences)
+#    for i in range(n_iter):
+#        model.train(sentences)
     model.save(modelname)
 
 if __name__ == "__main__":

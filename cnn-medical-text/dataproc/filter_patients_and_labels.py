@@ -1,5 +1,5 @@
 """
-	When group_and_sort is run, note entries with null CHARTTIME values are dropped.
+	When group_and_sort is run, note entries with null CHARTTIME or HADM_ID values are dropped.
 	This means that a small number of subjects are completely dropped
 	This script updates the patients list and labels list to drop the same subjects that were dropped
 """
@@ -28,7 +28,7 @@ def main(Y):
 					filteredfile.write(str(subj_id) + '\n')
 
 	print("Filtering labels list")
-	with open('%s/labels_%s_w_times.csv' % (DATA_DIR, Y), 'r') as labelfile:
+	with open('%s/labels_%s.csv' % (DATA_DIR, Y), 'r') as labelfile:
 		with open('%s/labels_%s_filtered.csv' % (DATA_DIR, Y), 'w') as filteredfile:
 			reader = csv.reader(labelfile)
 			next(reader)

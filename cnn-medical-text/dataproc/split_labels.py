@@ -1,6 +1,7 @@
 """
 	This script takes in a set of labels sorted by subject ID
 	It splits the labels into train/dev/test sets, replacing the code by an index for the code
+        also drops time info
 """
 import csv
 import os
@@ -48,7 +49,7 @@ def main(Y):
 				subj_seen += 1
 				cur_subj = subj_id
 
-			code_ind = c_dict[row[2]]
+			code_ind = c_dict[int(row[2])]
 
 			if subj_seen < num_subjects * TRAIN_PCT:
 				train_file.write(','.join([row[0], str(code_ind)]) + "\n")

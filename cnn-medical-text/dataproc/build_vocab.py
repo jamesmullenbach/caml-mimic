@@ -19,6 +19,8 @@ def main(vocab_size, Y, vocab_min):
             3. Calculate tf-idf scores, keep list of top vocab_size terms
             4. Drop all rows corresponding to non-top-vocab_size terms
     """
+    if vocab_size != "full":
+        vocab_size = int(vocab_size)
     with open('%s/notes_%s_train.csv' % (DATA_DIR, Y), 'r') as csvfile:
         reader = csv.reader(csvfile)
 
@@ -93,9 +95,10 @@ def main(vocab_size, Y, vocab_min):
         tfidf = np.multiply(tf, idf)
         tfidf = np.squeeze(np.asarray(tfidf))
 
+        
         print("sorting to get top " + str(vocab_size))
         args = tfidf.argsort()
-        if len(args) > vocab_size:
+        if vocab_size != "full" and len(args) > vocab_size:
             inds = args[-vocab_size:]
         else:
             inds = args
@@ -103,7 +106,7 @@ def main(vocab_size, Y, vocab_min):
         kept_terms = []
         scores = []
         print("writing output")
-        vocab_file = open('%s/vocab_lookup_%d_%s_%d_blahlblahtest.txt' % (DATA_DIR, vocab_size, Y, vocab_min), 'w')
+        vocab_file = open('%s/vocab_lookup_%s_%s_%d.txt' % (DATA_DIR, str(vocab_size), Y, vocab_min), 'w')
         print("inds: " + str(inds))
         for ind in inds:
             kept_terms.append(vocab_list[ind])
@@ -119,4 +122,4 @@ if __name__ == "__main__":
     if len(sys.argv) < 4:
         print("usage: python build_vocab.py vocab_size [|Y|] vocab_min")
         sys.exit(0)
-    main(int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]))
+    main(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]))

@@ -1,6 +1,8 @@
 """
-	This script takes in the file containing (SUBJECT_ID, CHARTTIME, TEXT) triples
+	This script takes in the file containing (SUBJECT_ID, HADM_ID, CHARTTIME, TEXT) triples
 	and sorts them by subject id and charttime using pandas. Because SQL was really determined to run out of memory
+
+        also drop if no CHARTTIME or HADM_ID
 """
 import os
 import pandas as pd
@@ -14,8 +16,8 @@ def main(Y):
 					 parse_dates=['CHARTTIME'],
 					 infer_datetime_format=True)
 
-	print("dropping if no CHARTTIME")
-	df = df.dropna(subset=['CHARTTIME'])
+	print("dropping if no CHARTTIME or HADM_ID")
+	df = df.dropna(subset=['CHARTTIME', 'HADM_ID'])
 
 	print("sorting")
 	df = df.sort(['SUBJECT_ID', 'CHARTTIME'])

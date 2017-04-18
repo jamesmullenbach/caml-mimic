@@ -32,7 +32,7 @@ def main(Y):
     with open('%s/NOTEEVENTS.csv' % (DATA_DIR), 'r') as csvfile:
         with open('%s/notes_%s.csv' % (DATA_DIR, Y), 'w') as outfile:
             print("writing to %s/notes_%s.csv" % (DATA_DIR, Y))
-            outfile.write(','.join(['SUBJECT_ID', 'CHARTTIME', 'TEXT']) + '\n')
+            outfile.write(','.join(['SUBJECT_ID', 'HADM_ID', 'CHARTTIME', 'TEXT']) + '\n')
             notereader = csv.reader(csvfile)
             next(notereader)
             i = 0
@@ -40,13 +40,15 @@ def main(Y):
                 if i % 10000 == 0:
                     print(i)
                 subj = int(line[1])
+#                hadm = int(line[2])
                 if subj in subjects:
                     #probably okay to normalize to lowercase. medical terms written in lowercase.
-                    tokens = [t.lower() for t in tokenizer.tokenize(line[10]) if not t.isnumeric() and t.lower() not in stop_words]
+                    note = unicode(line[10])
+                    tokens = [t.lower() for t in tokenizer.tokenize(note) if not t.isnumeric() and t.lower() not in stop_words]
                     text = '"' + ' '.join(tokens) + '"'
                     if i % 10000 == 0:
                         print(text[:80])
-                    outfile.write(','.join([line[1], line[4], text]) + '\n')
+                    outfile.write(','.join([line[1], line[2], line[4], text]) + '\n')
                 i += 1
 
 if __name__ == "__main__":

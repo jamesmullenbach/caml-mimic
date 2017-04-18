@@ -25,16 +25,23 @@ def rewrite_metrics(prev_metrics, metrics_hist, metrics_hist_tr, model_dir):
         json.dump(prev_metrics, metrics_file, indent=1)
 
 def save_params(model_dir, Y, vocab_min, dataset, model, n_epochs, framework, filter_size="n/a", min_filter="n/a", max_filter="n/a",
-                conv_dim_factor="n/a", padding="var"):
+                num_filter_maps="n/a", padding="var"):
     with open(model_dir + "/params.json", 'w') as params_file:
         param_names = ["Y", "dataset", "Num epochs", "Vocab size", "Embedding size", "Embed dropout", "Conv activation", "Conv window size",
-                "Conv window type", "Conv output size", "Dense dropout", "Optimizer", "Loss", "Embed init", "Learning rate",
+                "Conv window type", "Num filter maps", "Dense dropout", "Optimizer", "Loss", "Embed init", "Learning rate",
                 "Padding", "Vocab min occurrences", "Framework"]
         filter_sz = filter_size if model != "cnn_multi" else ';'.join([str(i) for i in range(min_filter, max_filter + 1)])
         param_vals = [Y, dataset, n_epochs, VOCAB_SIZE, EMBEDDING_SIZE, DROPOUT_EMBED, ACTIVATION_CONV, filter_sz, WINDOW_TYPE, 
-                conv_dim_factor*Y, DROPOUT_DENSE, OPTIMIZER, LOSS, EMBED_INIT, LEARNING_RATE, padding, vocab_min, framework]
+               num_filter_maps, DROPOUT_DENSE, OPTIMIZER, LOSS, EMBED_INIT, LEARNING_RATE, padding, vocab_min, framework]
         data = {name: str(val) for (name,val) in zip(param_names, param_vals)}
         json.dump(data, params_file, indent=1)
+
+def save_params_dict(params):
+    if "model_dir" in params.keys():
+        with open(params["model_dir"] + "/params.json", 'w') as params_file:
+            json.dump(params, params_file, indent=1)
+    else:
+        print("****no model dir given. not saving params****")
 
 def rewrite_params(model_dir, dataset, n_epochs):
     with open(model_dir + "/params.json", 'r') as params_file:
@@ -102,10 +109,10 @@ def load_model(saved_dir, Y, vocab_min, framework):
             filter_size = int(filter_size)
         else:
             filter_size = None
-    if params["Conv output size"] != "n/a":
-        conv_dim_factor = int(params["Conv output size"])/int(params["Y"])
+    if params["Num filter maps"] != "n/a":
+        num_filter_maps = int(params["Num filter maps"])/int(params["Y"])
     else:
-        conv_dim_factor = None
+        num_filter_maps = None
     prev_epochs = int(params["Num epochs"])
     prev_dataset = params["dataset"]
-    return model, filter_size, min_filter, max_filter, conv_dim_factor, prev_epochs, metrics, prev_dataset
+    return model, filter_size, min_filter, max_filter, num_filter_maps, prev_epochs, metrics, prev_dataset
