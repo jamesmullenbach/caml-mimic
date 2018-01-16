@@ -1,0 +1,1 @@
+python training.py ../mimicdata/mimic3/train_full.csv ../mimicdata/mimic3/vocab.csv full conv_attn 100 bce --filter-size 4 --num-filter-maps 50 --dropout 0.2 --lr 0.0001 --gpu --embed-file ../mimicdata/mimic3/processed_full.embed

@@ -1,1 +1,0 @@
-BATCH_SIZE = 50

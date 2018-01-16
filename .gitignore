@@ -4,5 +4,14 @@
 *.golds
 *.preds
 *.swp
+*.tsv
 .ipynb_checkpoints/*
-models/*
+notebooks/.ipynb_checkpoints/*
+saved_models/*
+bin/*
+include/*
+lib/*
+share/*
+pip-selfcheck.json
+mimicdata/mimic2/*
+mimicdata/mimic3/*
