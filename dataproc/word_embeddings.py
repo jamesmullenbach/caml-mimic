@@ -1,5 +1,5 @@
 """
-    Pre-train embeddings using gensim w2v implementation
+    Pre-train embeddings using gensim w2v implementation (CBOW by default)
 """
 import gensim.models.word2vec as w2v
 import csv
@@ -16,7 +16,7 @@ class ProcessedIter(object):
             r = csv.reader(f)
             next(r)
             for row in r:
-                yield (row[3].decode('latin-1')).split()
+                yield (row[3].split())
 
 def word_embeddings(Y, notes_file, embedding_size, min_count, n_iter):
     modelname = "processed_%s.w2v" % (Y)

@@ -1,0 +1,1 @@
+python ../../learn/training.py ../../mimicdata/mimic2/train.csv ../../mimicdata/mimic2/vocab.csv full conv_attn 200 --filter-size 10 --num-filter-maps 50 --lr 0.0003  --dataset mimic2 --public-model --test-model model.pth --gpu

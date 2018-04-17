@@ -17,7 +17,13 @@ def gensim_to_embeddings(wv_file, vocab_file, Y, outfile=None):
     #free up memory
     del model
 
-    ind2w, _ = datasets.load_vocab_dict(vocab_file)
+    vocab = set()
+    with open(vocab_file, 'r') as vocabfile:
+        for i,line in enumerate(vocabfile):
+            line = line.strip()
+            if line != '':
+                vocab.add(line)
+    ind2w = {i:w for i,w in enumerate(sorted(vocab))}
 
     W, words = build_matrix(ind2w, wv)
 
@@ -36,7 +42,7 @@ def build_matrix(ind2w, wv):
     W = np.zeros((len(ind2w)+1, len(wv.word_vec(wv.index2word[0])) ))
     words = [PAD_CHAR]
     W[0][:] = np.zeros(len(wv.word_vec(wv.index2word[0])))
-    for idx, word in tqdm(ind2w.iteritems()):
+    for idx, word in tqdm(ind2w.items()):
         if idx >= W.shape[0]:
             break
         for i in range(len(wv.index2word)):
@@ -70,8 +76,6 @@ def load_embeddings(embed_file):
         vec = np.random.randn(len(W[-1]))
         vec = vec / (np.linalg.norm(vec) + 1e-6)
         W.append(vec)
-        #add pad vector
-        W.insert(0, np.zeros(len(W[0])))
     W = np.array(W)
     return W
 

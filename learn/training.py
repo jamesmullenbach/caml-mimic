@@ -26,8 +26,8 @@ import learn.tools as tools
 
 def main(args):
     start = time.time()
-    args, model, optimizer, params, freq_params, dicts = init(args)
-    epochs_trained = train_epochs(args, model, optimizer, params, freq_params, dicts)
+    args, model, optimizer, params, dicts = init(args)
+    epochs_trained = train_epochs(args, model, optimizer, params, dicts)
     print("TOTAL ELAPSED TIME FOR %s MODEL AND %d EPOCHS: %f" % (args.model, epochs_trained, time.time() - start))
 
 def init(args):
@@ -37,27 +37,24 @@ def init(args):
     #need to handle really large text fields
     csv.field_size_limit(sys.maxsize)
 
-    freq_params = None
-    if args.samples or args.lmbda > 0:
-        print "loading code frequencies..."
-        code_freqs, n = datasets.load_code_freqs(args.data_path, version=args.version)
-        print("code_freqs:", sorted(code_freqs.items(), key=operator.itemgetter(1), reverse=True)[:10], "n:", n)
-        freq_params = (code_freqs, n)
-
     #load vocab and other lookups
     desc_embed = args.lmbda > 0
-    dicts = datasets.load_lookups(args.data_path, args.vocab, Y=args.Y, desc_embed=desc_embed, version=args.version)
+    print("loading lookups...")
+    dicts = datasets.load_lookups(args, desc_embed=desc_embed)
 
     model = tools.pick_model(args, dicts)
     print(model)
 
-    optimizer = optim.Adam(model.params_to_optimize(), weight_decay=args.weight_decay, lr=args.lr)
+    if not args.test_model:
+        optimizer = optim.Adam(model.parameters(), weight_decay=args.weight_decay, lr=args.lr)
+    else:
+        optimizer = None
 
     params = tools.make_param_dict(args)
     
-    return args, model, optimizer, params, freq_params, dicts
+    return args, model, optimizer, params, dicts
 
-def train_epochs(args, model, optimizer, params, freq_params, dicts):
+def train_epochs(args, model, optimizer, params, dicts):
     """
         Main loop. does train and test
     """
@@ -66,19 +63,18 @@ def train_epochs(args, model, optimizer, params, freq_params, dicts):
     metrics_hist_tr = defaultdict(lambda: [])
 
     test_only = args.test_model is not None
-    unseen_code_inds = set()
+    evaluate = args.test_model is not None
     #train for n_epochs unless criterion metric does not improve for [patience] epochs
     for epoch in range(args.n_epochs):
         #only test on train/test set on very last epoch
         if epoch == 0 and not args.test_model:
-            model_dir = os.path.join(MODEL_DIR, '_'.join([args.model, time.strftime('%b_%d_%H:%M', time.gmtime())]))
+            model_dir = os.path.join(MODEL_DIR, '_'.join([args.model, time.strftime('%b_%d_%H:%M', time.localtime())]))
             os.mkdir(model_dir)
         elif args.test_model:
-            #just save things to where this script was called
-            model_dir = os.getcwd()
-        metrics_all, unseen_code_inds = one_epoch(model, optimizer, args.Y, epoch, args.n_epochs, args.batch_size, args.data_path,
-                                                  args.version, freq_params, test_only, dicts, model_dir, unseen_code_inds,
-                                                  args.samples, args.gpu, args.debug, args.quiet)
+            model_dir = os.path.dirname(os.path.abspath(args.test_model))
+        metrics_all = one_epoch(model, optimizer, args.Y, epoch, args.n_epochs, args.batch_size, args.data_path,
+                                                  args.version, test_only, dicts, model_dir, 
+                                                  args.samples, args.gpu, args.quiet)
         for name in metrics_all[0].keys():
             metrics_hist[name].append(metrics_all[0][name])
         for name in metrics_all[1].keys():
@@ -88,9 +84,10 @@ def train_epochs(args, model, optimizer, params, freq_params, dicts):
         metrics_hist_all = (metrics_hist, metrics_hist_te, metrics_hist_tr)
 
         #save metrics, model, params
-        persistence.save_everything(args, metrics_hist_all, model, model_dir, params, args.criterion)
+        persistence.save_everything(args, metrics_hist_all, model, model_dir, params, args.criterion, evaluate)
 
         if test_only:
+            #we're done
             break
 
         if args.criterion in metrics_hist.keys():
@@ -98,37 +95,43 @@ def train_epochs(args, model, optimizer, params, freq_params, dicts):
                 #stop training, do tests on test and train sets, and then stop the script
                 print("%s hasn't improved in %d epochs, early stopping..." % (args.criterion, args.patience))
                 test_only = True
-                model = torch.load('%s/model_best_%s.pth' % (model_dir, args.criterion))
+                args.test_model = '%s/model_best_%s.pth' % (model_dir, args.criterion)
+                model = tools.pick_model(args, dicts)
     return epoch+1
 
 def early_stop(metrics_hist, criterion, patience):
     if not np.all(np.isnan(metrics_hist[criterion])):
         if criterion == 'loss-dev': 
-            return np.nanargmin(metrics_hist[criterion]) < len(metrics_hist[criterion]) - patience
+            return np.nanargmin(metrics_hist[criterion]) > len(metrics_hist[criterion]) - patience
         else:
             return np.nanargmax(metrics_hist[criterion]) < len(metrics_hist[criterion]) - patience
     else:
+        #keep training if criterion results have all been nan so far
         return False
         
-def one_epoch(model, optimizer, Y, epoch, n_epochs, batch_size, data_path, version, freq_params, testing, dicts, model_dir, unseen_code_inds, 
-              samples, gpu, debug, quiet):
+def one_epoch(model, optimizer, Y, epoch, n_epochs, batch_size, data_path, version, testing, dicts, model_dir, 
+              samples, gpu, quiet):
     """
-        Basically a wrapper to do a training epoch and test on dev
+        Wrapper to do a training epoch and test on dev
     """
     if not testing:
-        losses, unseen_code_inds = train(model, optimizer, Y, epoch, batch_size, data_path, gpu, version, freq_params, dicts, debug, quiet)
-        print('num unseen codes', len(unseen_code_inds))
+        losses, unseen_code_inds = train(model, optimizer, Y, epoch, batch_size, data_path, gpu, version, dicts, quiet)
         loss = np.mean(losses)
         print("epoch loss: " + str(loss))
     else:
         loss = np.nan
         if model.lmbda > 0:
             #still need to get unseen code inds
-            unseen_code_inds = set(dicts[2].keys())
-            num_labels = tools.get_num_labels(Y, version)
-            gen = datasets.data_generator(data_path, dicts, batch_size, num_labels, version=version)
-            for _, _, _, code_set, _ in gen:
-                unseen_code_inds = unseen_code_inds.difference(code_set)
+            print("getting set of codes not in training set")
+            c2ind = dicts['c2ind']
+            unseen_code_inds = set(dicts['ind2c'].keys())
+            num_labels = len(dicts['ind2c'])
+            with open(data_path, 'r') as f:
+                r = csv.reader(f)
+                #header
+                next(r)
+                for row in r:
+                    unseen_code_inds = unseen_code_inds.difference(set([c2ind[c] for c in row[3].split(';') if c != '']))
             print("num codes not in train set: %d" % len(unseen_code_inds))
         else:
             unseen_code_inds = set()
@@ -140,41 +143,40 @@ def one_epoch(model, optimizer, Y, epoch, n_epochs, batch_size, data_path, versi
         quiet = False
 
     #test on dev
-    metrics = test(model, Y, epoch, batch_size, data_path, fold, gpu, version, unseen_code_inds, dicts, samples, freq_params, model_dir,
-                   testing, debug)
+    metrics = test(model, Y, epoch, data_path, fold, gpu, version, unseen_code_inds, dicts, samples, model_dir,
+                   testing)
     if testing or epoch == n_epochs - 1:
-        print("evaluating on test")
-        metrics_te = test(model, Y, epoch, batch_size, data_path, "test", gpu, version, unseen_code_inds, dicts, samples, freq_params,
-                          model_dir, True, debug)
+        print("\nevaluating on test")
+        metrics_te = test(model, Y, epoch, data_path, "test", gpu, version, unseen_code_inds, dicts, samples, 
+                          model_dir, True)
     else:
         metrics_te = defaultdict(float)
         fpr_te = defaultdict(lambda: [])
         tpr_te = defaultdict(lambda: [])
     metrics_tr = {'loss': loss}
     metrics_all = (metrics, metrics_te, metrics_tr)
-    return metrics_all, unseen_code_inds
+    return metrics_all
 
 
-def train(model, optimizer, Y, epoch, batch_size, data_path, gpu, version, freq_params, dicts, debug, quiet):
+def train(model, optimizer, Y, epoch, batch_size, data_path, gpu, version, dicts, quiet):
     """
         Training loop.
         output: losses for each example for this iteration
     """
-    num_labels = tools.get_num_labels(Y, version)
+    print("EPOCH %d" % epoch)
+    num_labels = len(dicts['ind2c'])
 
     losses = []
     #how often to print some info to stdout
     print_every = 25
 
-    ind2w, w2ind, ind2c, c2ind = dicts[0], dicts[1], dicts[2], dicts[3]
+    ind2w, w2ind, ind2c, c2ind = dicts['ind2w'], dicts['w2ind'], dicts['ind2c'], dicts['c2ind']
     unseen_code_inds = set(ind2c.keys())
     desc_embed = model.lmbda > 0
 
     model.train()
     gen = datasets.data_generator(data_path, dicts, batch_size, num_labels, version=version, desc_embed=desc_embed)
     for batch_idx, tup in tqdm(enumerate(gen)):
-        if debug and batch_idx > 50:
-            break
         data, target, _, code_set, descs = tup
         data, target = Variable(torch.LongTensor(data)), Variable(torch.FloatTensor(target))
         unseen_code_inds = unseen_code_inds.difference(code_set)
@@ -196,31 +198,31 @@ def train(model, optimizer, Y, epoch, batch_size, data_path, gpu, version, freq_
         losses.append(loss.data[0])
 
         if not quiet and batch_idx % print_every == 0:
-            #print the average loss of the last 100 batches
+            #print the average loss of the last 10 batches
             print("Train epoch: {} [batch #{}, batch_size {}, seq length {}]\tLoss: {:.6f}".format(
-                epoch+1, batch_idx, data.size()[0], data.size()[1], np.mean(losses[-100:])))
+                epoch, batch_idx, data.size()[0], data.size()[1], np.mean(losses[-10:])))
     return losses, unseen_code_inds
 
-def unseen_code_vecs(model, code_inds, dicts):
+def unseen_code_vecs(model, code_inds, dicts, gpu):
     """
         Use description module for codes not seen in training set.
     """
     code_vecs = tools.build_code_vecs(code_inds, dicts)
     code_inds, vecs = code_vecs
     #wrap it in an array so it's 3d
-    desc_embeddings = model.embed_descriptions([vecs], len(dicts[0]))[0]
+    desc_embeddings = model.embed_descriptions([vecs], gpu)[0]
     #replace relevant final_layer weights with desc embeddings 
-    model.final.data[code_inds, :] = desc_embeddings.data
-    model.final_bias.data[code_inds] = 0
+    model.final.weight.data[code_inds, :] = desc_embeddings.data
+    model.final.bias.data[code_inds] = 0
 
-def test(model, Y, epoch, batch_size, data_path, fold, gpu, version, code_inds, dicts, samples, freq_params, model_dir, testing, debug):
+def test(model, Y, epoch, data_path, fold, gpu, version, code_inds, dicts, samples, model_dir, testing):
     """
         Testing loop.
         Returns metrics
     """
     filename = data_path.replace('train', fold)
     print('file for evaluation: %s' % filename)
-    num_labels = tools.get_num_labels(Y, version)
+    num_labels = len(dicts['ind2c'])
 
     #initialize stuff for saving attention samples
     if samples:
@@ -229,17 +231,15 @@ def test(model, Y, epoch, batch_size, data_path, fold, gpu, version, code_inds, 
         window_size = model.conv.weight.data.size()[2]
 
     y, yhat, yhat_raw, hids, losses = [], [], [], [], []
-    ind2w, w2ind, ind2c, c2ind = dicts[0], dicts[1], dicts[2], dicts[3]
+    ind2w, w2ind, ind2c, c2ind = dicts['ind2w'], dicts['w2ind'], dicts['ind2c'], dicts['c2ind']
 
     desc_embed = model.lmbda > 0
     if desc_embed and len(code_inds) > 0:
-        unseen_code_vecs(model, code_inds, dicts)
+        unseen_code_vecs(model, code_inds, dicts, gpu)
 
     model.eval()
-    gen = datasets.data_generator(filename, dicts, batch_size, num_labels, version=version, desc_embed=desc_embed)
+    gen = datasets.data_generator(filename, dicts, 1, num_labels, version=version, desc_embed=desc_embed)
     for batch_idx, tup in tqdm(enumerate(gen)):
-        if debug and batch_idx > 50:
-            break
         data, target, hadm_ids, _, descs = tup
         data, target = Variable(torch.LongTensor(data), volatile=True), Variable(torch.FloatTensor(target))
         if gpu:
@@ -252,6 +252,7 @@ def test(model, Y, epoch, batch_size, data_path, fold, gpu, version, code_inds, 
         else:
             desc_data = None
 
+        #get an attention sample for 2% of batches
         get_attn = samples and (np.random.rand() < 0.02 or (fold == 'test' and testing))
         output, loss, alpha = model(data, target, desc_data=desc_data, get_attention=get_attn)
 
@@ -259,7 +260,7 @@ def test(model, Y, epoch, batch_size, data_path, fold, gpu, version, code_inds, 
         losses.append(loss.data[0])
         target_data = target.data.cpu().numpy()
         if get_attn and samples:
-            interpret.save_samples(data, output, target_data, alpha, window_size, epoch, tp_file, fp_file, freq_params[0], dicts=dicts)
+            interpret.save_samples(data, output, target_data, alpha, window_size, epoch, tp_file, fp_file, dicts=dicts)
 
         #save predictions, target, hadm ids
         yhat_raw.append(output)
@@ -268,6 +269,7 @@ def test(model, Y, epoch, batch_size, data_path, fold, gpu, version, code_inds, 
         yhat.append(output)
         hids.extend(hadm_ids)
 
+    #close files if needed
     if samples:
         tp_file.close()
         fp_file.close()
@@ -276,13 +278,10 @@ def test(model, Y, epoch, batch_size, data_path, fold, gpu, version, code_inds, 
     yhat = np.concatenate(yhat, axis=0)
     yhat_raw = np.concatenate(yhat_raw, axis=0)
 
-    print("y shape: " + str(y.shape))
-    print("yhat shape: " + str(yhat.shape))
-
     #write the predictions
     preds_file = persistence.write_preds(yhat, model_dir, hids, fold, ind2c, yhat_raw)
     #get metrics
-    k = 5 if num_labels == 50 else 8
+    k = 5 if num_labels == 50 else [8,15]
     metrics = evaluation.all_metrics(yhat, y, k=k, yhat_raw=yhat_raw)
     evaluation.print_metrics(metrics)
     metrics['loss_%s' % fold] = np.mean(losses)
@@ -331,8 +330,8 @@ if __name__ == "__main__":
                         help="how many epochs to wait for improved criterion metric before early stopping (default: 3)")
     parser.add_argument("--gpu", dest="gpu", action="store_const", required=False, const=True,
                         help="optional flag to use GPU if available")
-    parser.add_argument("--debug", dest="debug", action="store_const", required=False, const=True,
-                        help="optional flag to set debug mode (run train/test for only 50 batches)")
+    parser.add_argument("--public-model", dest="public_model", action="store_const", required=False, const=True,
+                        help="optional flag for testing pre-trained models from the public github")
     parser.add_argument("--stack-filters", dest="stack_filters", action="store_const", required=False, const=True,
                         help="optional flag for multi_conv_attn to instead use concatenated filter outputs, rather than pooling over them")
     parser.add_argument("--samples", dest="samples", action="store_const", required=False, const=True,

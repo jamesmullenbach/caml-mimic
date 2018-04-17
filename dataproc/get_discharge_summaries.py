@@ -27,7 +27,7 @@ def write_discharge_summaries(out_file):
                 subj = int(line[1])
                 category = line[6]
                 if category == "Discharge summary":
-                    note = unicode(line[10])
+                    note = line[10]
                     #tokenize, lowercase and remove numerics
                     tokens = [t.lower() for t in tokenizer.tokenize(note) if not t.isnumeric()]
                     text = '"' + ' '.join(tokens) + '"'

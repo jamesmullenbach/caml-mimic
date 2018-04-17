@@ -1,1 +1,0 @@
-python ../../learn/training.py ../../mimicdata/mimic2/train.csv ../../mimicdata/mimic2/vocab.csv full rnn 200 --cell-type gru --rnn-dim 512 --lr 0.003 --embed-file ../../mimicdata/mimic2/processed_full.embed --gpu 

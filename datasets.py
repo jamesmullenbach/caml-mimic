@@ -10,6 +10,9 @@ import sys
 from constants import *
 
 class Batch:
+    """
+        This class and the data_generator could probably be replaced with a PyTorch DataLoader
+    """
     def __init__(self, desc_embed):
         self.docs = []
         self.labels = []
@@ -100,7 +103,7 @@ def data_generator(filename, dicts, batch_size, num_labels, desc_embed=False, ve
         Yields:
             np arrays with data for training loop.
     """
-    ind2w, w2ind, ind2c, c2ind, dv_dict = dicts[0], dicts[1], dicts[2], dicts[3], dicts[5]
+    ind2w, w2ind, ind2c, c2ind, dv_dict = dicts['ind2w'], dicts['w2ind'], dicts['ind2c'], dicts['c2ind'], dicts['dv']
     with open(filename, 'r') as infile:
         r = csv.reader(infile)
         #header
@@ -117,97 +120,53 @@ def data_generator(filename, dicts, batch_size, num_labels, desc_embed=False, ve
         cur_inst.pad_docs()
         yield cur_inst.to_ret()
 
-def load_code_freqs(train_path, version='mimic3'):
-    """
-        Inputs:
-            train_path: path to training data
-            version: which (MIMIC) dataset
-        Returns:
-            a dict of (code: frequency) pairs for train, dev, and test datasets combined, and the total number of examples
-    """
-    num_lines = 0
-    freqs = defaultdict(float)
-    with open(train_path) as train_file:
-        r = csv.reader(train_file)
-        #header
-        next(r)
-        for row in r:
-            num_lines += 1
-            labels = row[3].split(';')
-            if len(labels) > 0:
-                for label in labels:
-                    if label != '':
-                        freqs[label] += 1
-    with open(train_path.replace("train", 'test')) as dev_file:
-        r = csv.reader(dev_file)
-        #header
-        next(r)
-        for row in r:
-            num_lines += 1
-            labels = row[3].split(';')
-            if len(labels) > 0:
-                for label in labels:
-                    if label != '':
-                        freqs[label] += 1
-    if version != 'mimic2':
-        with open(train_path.replace("train", 'dev')) as dev_file:
-            r = csv.reader(dev_file)
-            #header
-            next(r)
-            for row in r:
-                num_lines += 1
-                labels = row[3].split(';')
-                if len(labels) > 0:
-                    for label in labels:
-                        if label != '':
-                            freqs[label] += 1
-    freqs = {c: freq / float(num_lines) for c, freq in freqs.iteritems()}
-    return freqs, num_lines
-
-def load_vocab_dict(vocab_file):
-    #reads vocab_file into two lookups
-    ind2w = defaultdict(str)
+def load_vocab_dict(args, vocab_file):
+    #reads vocab_file into two lookups (word:ind) and (ind:word)
+    vocab = set()
     with open(vocab_file, 'r') as vocabfile:
         for i,line in enumerate(vocabfile):
             line = line.rstrip()
             if line != '':
-                ind2w[i+1] = line.rstrip()
-    w2ind = {w:i for i,w in ind2w.iteritems()}
+                vocab.add(line.strip())
+    #hack because the vocabs were created differently for these models
+    if args.public_model and args.Y == 'full' and args.version == "mimic3" and args.model == 'conv_attn':
+        ind2w = {i:w for i,w in enumerate(sorted(vocab))}
+    else:
+        ind2w = {i+1:w for i,w in enumerate(sorted(vocab))}
+    w2ind = {w:i for i,w in ind2w.items()}
     return ind2w, w2ind
 
-def load_lookups(train_path, vocab_file, Y='full', desc_embed=False, version='mimic3'):
+def load_lookups(args, desc_embed=False):
     """
         Inputs:
-            train_path: path to train dataset
-            vocab_file: path to vocab
-            Y: size of label space
+            args: Input arguments
             desc_embed: true if using DR-CAML
-            version: which(MIMIC) dataset
         Outputs:
             vocab lookups, ICD code lookups, description lookup, description one-hot vector lookup
     """
     #get vocab lookups
-    ind2w, w2ind = load_vocab_dict(vocab_file)
+    ind2w, w2ind = load_vocab_dict(args, args.vocab)
 
     #get code and description lookups
-    if Y == 'full':
-        ind2c, desc_dict = load_full_codes(train_path, version=version)
+    if args.Y == 'full':
+        ind2c, desc_dict = load_full_codes(args.data_path, version=args.version)
     else:
-        ind2c = defaultdict(str)
-        with open("%s/TOP_%s_CODES.csv" % (MIMIC_3_DIR, str(Y)), 'r') as labelfile:
+        codes = set()
+        with open("%s/TOP_%s_CODES.csv" % (MIMIC_3_DIR, str(args.Y)), 'r') as labelfile:
             lr = csv.reader(labelfile)
             for i,row in enumerate(lr):
-                ind2c[i] = row[0]
+                codes.add(row[0])
+        ind2c = {i:c for i,c in enumerate(sorted(codes))}
         desc_dict = load_code_descriptions()
-    c2ind = {c:i for i,c in ind2c.iteritems()}
+    c2ind = {c:i for i,c in ind2c.items()}
 
-    #get desription one-hot vector lookup
+    #get description one-hot vector lookup
     if desc_embed:
-        dv_dict = load_description_vectors(Y, version=version)
+        dv_dict = load_description_vectors(args.Y, version=args.version)
     else:
         dv_dict = None
 
-    dicts = (ind2w, w2ind, ind2c, c2ind, desc_dict, dv_dict)
+    dicts = {'ind2w': ind2w, 'w2ind': w2ind, 'ind2c': ind2c, 'c2ind': c2ind, 'desc': desc_dict, 'dv': dv_dict}
     return dicts
 
 def load_full_codes(train_path, version='mimic3'):
@@ -230,7 +189,8 @@ def load_full_codes(train_path, version='mimic3'):
             next(r)
             for row in r:
                 codes.update(set(row[-1].split(';')))
-        ind2c = defaultdict(str, {i:c for i,c in enumerate(codes)})
+        codes = set([c for c in codes if c != ''])
+        ind2c = defaultdict(str, {i:c for i,c in enumerate(sorted(codes))})
     else:
         codes = set()
         for split in ['train', 'dev', 'test']:
@@ -240,13 +200,16 @@ def load_full_codes(train_path, version='mimic3'):
                 for row in lr:
                     for code in row[3].split(';'):
                         codes.add(code)
-        ind2c = defaultdict(str)
-        ind2c.update({i:c for i,c in enumerate(codes)})
+        codes = set([c for c in codes if c != ''])
+        ind2c = defaultdict(str, {i:c for i,c in enumerate(sorted(codes))})
     return ind2c, desc_dict
 
 def reformat(code, is_diag):
-    #put a period in the right place. Generally, procedure codes have dots after the first two digits, 
-    #while diagnosis codes have dots after the first three digits.
+    """
+        Put a period in the right place because the MIMIC-3 data files exclude them.
+        Generally, procedure codes have dots after the first two digits, 
+        while diagnosis codes have dots after the first three digits.
+    """
     code = ''.join(code.split('.'))
     if is_diag:
         if code.startswith('E'):
@@ -291,7 +254,6 @@ def load_code_descriptions(version='mimic3'):
             for i,row in enumerate(labelfile):
                 row = row.rstrip().split()
                 code = row[0]
-                #code = reformat(row[0])
                 if code not in desc_dict.keys():
                     desc_dict[code] = ' '.join(row[1:])
     return desc_dict

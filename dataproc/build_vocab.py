@@ -2,6 +2,8 @@
     This script reads a sorted training dataset and builds a vocabulary of terms of given size
     Output: txt file with vocab words
     Drops any token not appearing in at least vocab_min notes
+
+    This script could probably be replaced by using sklearn's CountVectorizer to build a vocab
 """
 import csv
 import numpy as np
@@ -63,7 +65,7 @@ def build_vocab(vocab_min, infile, vocab_filename):
         note_occur = note_occur[note_occur>0]
 
         #turn vocab into a list so indexing doesn't get fd up when we drop rows
-        vocab_list = np.array([word for word,ind in sorted(vocab.iteritems(), key=operator.itemgetter(1))])
+        vocab_list = np.array([word for word,ind in sorted(vocab.items(), key=operator.itemgetter(1))])
 
         #1. create sparse document matrix
         C = csr_matrix((data, indices, note_inds), dtype=int).transpose()

@@ -1,5 +1,5 @@
 """
-    Reads BOW-formatted notes and performs scikit-learn logistic regression
+    Reads (or writes) BOW-formatted notes and performs scikit-learn logistic regression
 """
 import csv
 import numpy as np
@@ -34,7 +34,8 @@ def main(Y, train_fname, dev_fname, vocab_file, version, n):
 
     #get lookups from non-BOW data
     data_path = train_fname.replace('_bows', '') if "_bows" in train_fname else train_fname
-    _, w2ind, ind2c, c2ind, _, _, _, _ = datasets.load_lookups(data_path, vocab_file=vocab_file, Y=Y, version=version)
+    dicts = datasets.load_lookups(data_path, vocab_file=vocab_file, Y=Y, version=version)
+    w2ind, ind2c, c2ind = dicts['w2ind'], dicts['ind2c'], dicts['c2ind']
 
     X, yy_tr, hids_tr = read_bows(Y, train_fname, c2ind, version)
     X_dv, yy_dv, hids_dv = read_bows(Y, dev_fname, c2ind, version)
@@ -80,7 +81,7 @@ def main(Y, train_fname, dev_fname, vocab_file, version, n):
 
     #save metric history, model, params
     print("saving predictions")
-    model_dir = os.path.join(MODEL_DIR, '_'.join(["log_reg", time.strftime('%b_%d_%H:%M', time.gmtime())]))
+    model_dir = os.path.join(MODEL_DIR, '_'.join(["log_reg", time.strftime('%b_%d_%H:%M', time.localtime())]))
     os.mkdir(model_dir)
     preds_file = tools.write_preds(yhat_full, model_dir, hids_dv, 'test', yhat_full_raw)
 
@@ -109,9 +110,10 @@ def main(Y, train_fname, dev_fname, vocab_file, version, n):
         print("calculating top ngrams using file %s" % dev_fname)
         calculate_top_ngrams(dev_fname, clf, c2ind, w2ind, labels_with_examples, n)
 
-    print("saving model")
-    with open("%s/model.pkl" % model_dir, 'wb') as f:
-        pickle.dump(clf, f)
+    #Commenting this out because the models are huge (11G for mimic3 full)
+    #print("saving model")
+    #with open("%s/model.pkl" % model_dir, 'wb') as f:
+    #    pickle.dump(clf, f)
 
     print("saving metrics")
     metrics_hist = defaultdict(lambda: [])
@@ -138,7 +140,7 @@ def write_bows(data_fname, X, hadm_ids, y, ind2c):
             w.writerow([str(hadm_ids[i]), bow_str, code_str])
 
 def read_bows(Y, bow_fname, c2ind, version):
-    num_labels = tools.get_num_labels(Y, version)
+    num_labels = len(c2ind)
     data = []
     row_ind = []
     col_ind = []
@@ -178,7 +180,7 @@ def construct_X_Y(notefile, Y, w2ind, c2ind, version):
             csr_matrix where each row is a BOW
                 Dimension: (# instances in dataset) x (vocab size)
     """
-    Y = tools.get_num_labels(Y, version)
+    Y = len(c2ind)
     yy = []
     hadm_ids = []
     with open(notefile, 'r') as notesfile:

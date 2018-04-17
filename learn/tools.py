@@ -1,13 +1,16 @@
 """
-    Various methods are kept here to keep the other code files simple
+    Various utility methods
 """
 import csv
 import json
 import math
+import os
+import pickle
 
 import torch
+from torch.autograd import Variable
 
-import models
+from learn import models
 from constants import *
 import datasets
 import persistence
@@ -17,7 +20,7 @@ def pick_model(args, dicts):
     """
         Use args to initialize the appropriate model
     """
-    Y = get_num_labels(args.Y, args.version)
+    Y = len(dicts['ind2c'])
     if args.model == "rnn":
         model = models.VanillaRNN(Y, args.embed_file, dicts, args.rnn_dim, args.cell_type, args.rnn_layers, args.gpu, args.embed_size,
                                   args.bidirectional)
@@ -28,8 +31,9 @@ def pick_model(args, dicts):
         filter_size = int(args.filter_size)
         model = models.ConvAttnPool(Y, args.embed_file, filter_size, args.num_filter_maps, args.lmbda, args.gpu, dicts,
                                     embed_size=args.embed_size, dropout=args.dropout)
-    elif args.model == "saved":
-        model = torch.load(args.test_model)
+    if args.test_model:
+        sd = torch.load(args.test_model)
+        model.load_state_dict(sd)
     if args.gpu:
         model.cuda()
     return model
@@ -50,7 +54,7 @@ def build_code_vecs(code_inds, dicts):
         Get vocab-indexed arrays representing words in descriptions of each *unseen* label
     """
     code_inds = list(code_inds)
-    ind2w, ind2c, dv_dict = dicts[0], dicts[2], dicts[5]
+    ind2w, ind2c, dv_dict = dicts['ind2w'], dicts['ind2c'], dicts['dv']
     vecs = []
     for c in code_inds:
         code = ind2c[c]
@@ -63,15 +67,3 @@ def build_code_vecs(code_inds, dicts):
     vecs = datasets.pad_desc_vecs(vecs)
     return (torch.cuda.LongTensor(code_inds), vecs)
 
-def get_num_labels(Y, version):
-    #get appropriate number of labels based on input Y and version
-    if Y == 'full':
-        if version == 'mimic2':
-            num_labels = FULL_LABEL_SIZE_II
-        elif version == 'mimic3':
-            num_labels = FULL_LABEL_SIZE
-        else:
-            print(version)
-    else:
-        num_labels = int(Y)
-    return num_labels

@@ -9,12 +9,11 @@ from torch.autograd import Variable
 
 import numpy as np
 
-import math
+from math import floor
 import random
 import sys
 import time
 
-sys.path.append('../')
 from constants import *
 from dataproc import extract_wvs
 
@@ -22,6 +21,7 @@ class BaseModel(nn.Module):
 
     def __init__(self, Y, embed_file, dicts, lmbda=0, dropout=0.5, gpu=True, embed_size=100):
         super(BaseModel, self).__init__()
+        torch.manual_seed(1337)
         self.gpu = gpu
         self.Y = Y
         self.embed_size = embed_size
@@ -37,32 +37,30 @@ class BaseModel(nn.Module):
             self.embed.weight.data = W.clone()
         else:
             #add 2 to include UNK and PAD
-            vocab_size = len(dicts[0])
+            vocab_size = len(dicts['ind2w'])
             self.embed = nn.Embedding(vocab_size+2, embed_size)
 
 
-    def get_loss(self, yhat, target, diffs=None):
+    def _get_loss(self, yhat, target, diffs=None):
         #calculate the BCE
         loss = F.binary_cross_entropy(yhat, target)
 
         #add description regularization loss if relevant
         if self.lmbda > 0 and diffs is not None:
             diff = torch.stack(diffs).mean()
-            if random.random() > 0.99:
-                #keep track of this while training
-                print("loss: %.5f" % loss.data[0])
-                print("diff: %.5f" % diff.data[0])
-                print("total loss: %.5f" % (loss + diff).data[0])
             loss = loss + diff
         return loss
 
-    def embed_descriptions(self, desc_data):
+    def embed_descriptions(self, desc_data, gpu):
         #label description embedding via convolutional layer
-        #number of labels is inconsistent across instances, so have to iterate
+        #number of labels is inconsistent across instances, so have to iterate over the batch
         b_batch = []
         for inst in desc_data:
             if len(inst) > 0:
-                lt = Variable(torch.cuda.LongTensor(inst))
+                if gpu:
+                    lt = Variable(torch.cuda.LongTensor(inst))
+                else:
+                    lt = Variable(torch.LongTensor(inst))
                 d = self.desc_embedding(lt)
                 d = d.transpose(1,2)
                 d = self.label_conv(d)
@@ -74,7 +72,7 @@ class BaseModel(nn.Module):
                 b_batch.append([])
         return b_batch
 
-    def compare_label_embeddings(self, target, b_batch, desc_data):
+    def _compare_label_embeddings(self, target, b_batch, desc_data):
         #description regularization loss 
         #b is the embedding from description conv
         #iterate over batch because each instance has different # labels
@@ -83,15 +81,13 @@ class BaseModel(nn.Module):
             ti = target[i]
             inds = torch.nonzero(ti.data).squeeze().cpu().numpy()
 
-            zi = self.final[inds,:]
+            zi = self.final.weight[inds,:]
             diff = (zi - bi).mul(zi - bi).mean()
 
             #multiply by number of labels to make sure overall mean is balanced with regard to number of labels
             diffs.append(self.lmbda*diff*bi.size()[0])
         return diffs
 
-    def params_to_optimize(self):
-        return self.parameters()
 
 class ConvAttnPool(BaseModel):
 
@@ -99,25 +95,17 @@ class ConvAttnPool(BaseModel):
         super(ConvAttnPool, self).__init__(Y, embed_file, dicts, lmbda, dropout=dropout, gpu=gpu, embed_size=embed_size)
 
         #initialize conv layer as in 2.1
-        self.conv = nn.Conv1d(self.embed_size, num_filter_maps, kernel_size=kernel_size, padding=kernel_size/2)
+        self.conv = nn.Conv1d(self.embed_size, num_filter_maps, kernel_size=kernel_size, padding=floor(kernel_size/2))
         xavier_uniform(self.conv.weight)
 
         #context vectors for computing attention as in 2.2
         self.U = nn.Linear(num_filter_maps, Y)
-        self.U.bias.data.fill_(0)
-        self.U.bias.requires_grad = False
+        xavier_uniform(self.U.weight)
 
         #final layer: create a matrix to use for the L binary classifiers as in 2.3
-        if gpu:
-            self.final = Variable(torch.zeros((Y, num_filter_maps)).cuda())
-            self.final_bias = Variable(torch.zeros(Y).cuda())
-        else:
-            self.final = Variable(torch.zeros((Y, num_filter_maps)))
-            self.final_bias = Variable(torch.zeros(Y))
-        xavier_uniform(self.final)
-        self.final.requires_grad = True
-        self.final_bias.requires_grad = True
-
+        self.final = nn.Linear(num_filter_maps, Y)
+        xavier_uniform(self.final.weight)
+        
         #conv for label descriptions as in 2.5
         #description module has its own embedding and convolution layers
         if lmbda > 0:
@@ -125,7 +113,7 @@ class ConvAttnPool(BaseModel):
             self.desc_embedding = nn.Embedding(W.size()[0], W.size()[1])
             self.desc_embedding.weight.data = W.clone()
 
-            self.label_conv = nn.Conv1d(self.embed_size, num_filter_maps, kernel_size=kernel_size, padding=kernel_size/2)
+            self.label_conv = nn.Conv1d(self.embed_size, num_filter_maps, kernel_size=kernel_size, padding=floor(kernel_size/2))
             xavier_uniform(self.label_conv.weight)
 
             self.label_fc1 = nn.Linear(num_filter_maps, num_filter_maps)
@@ -139,61 +127,26 @@ class ConvAttnPool(BaseModel):
 
         #apply convolution and nonlinearity (tanh)
         x = F.tanh(self.conv(x).transpose(1,2))
-        y = []
-        ss = []
-        alphas = []
-        for x_i in x:
-            #apply attention
-            alpha_i = F.softmax(self.U(x_i).t())
-            #document representations are weighted sums using the attention. Can compute all at once as a matmul
-            m_i = alpha_i.mm(x_i)
-
-            #final layer classification
-            y_i = self.final.mul(m_i).sum(dim=1).add(self.final_bias)
-
-            #save attention
-            alphas.append(alpha_i)
-            y.append(y_i)
-
-        r = torch.stack(y)
-        alpha = torch.stack(alphas)
+        #apply attention
+        alpha = F.softmax(self.U.weight.matmul(x.transpose(1,2)), dim=2)
+        #document representations are weighted sums using the attention. Can compute all at once as a matmul
+        m = alpha.matmul(x)
+        #final layer classification
+        y = self.final.weight.mul(m).sum(dim=2).add(self.final.bias)
         
         if desc_data is not None:
-            desc_data = desc_data
             #run descriptions through description module
-            b_batch = self.embed_descriptions(desc_data)
+            b_batch = self.embed_descriptions(desc_data, self.gpu)
             #get l2 similarity loss
-            diffs = self.compare_label_embeddings(target, b_batch, desc_data)
+            diffs = self._compare_label_embeddings(target, b_batch, desc_data)
         else:
             diffs = None
             
         #final sigmoid to get predictions
-        yhat = F.sigmoid(r)
-        loss = self.get_loss(yhat, target, diffs)
+        yhat = F.sigmoid(y)
+        loss = self._get_loss(yhat, target, diffs)
         return yhat, loss, alpha
     
-    def params_to_optimize(self):
-        #use this to include final layer parameters and exclude attention (U)'s bias term
-        ps = []
-        for param in self.embed.parameters():
-            ps.append(param)
-        for param in self.conv.parameters():
-            ps.append(param)
-        for i,param in enumerate(self.U.parameters()):
-            #don't add bias
-            if i == 0:
-                ps.append(param)
-        if self.lmbda > 0:
-            for param in self.desc_embedding.parameters():
-                ps.append(param)
-            for param in self.label_conv.parameters():
-                ps.append(param)
-            for param in self.label_fc1.parameters():
-                ps.append(param)
-        ps.append(self.final)
-        ps.append(self.final_bias)
-        return ps
-
 class VanillaConv(BaseModel):
 
     def __init__(self, Y, embed_file, kernel_size, num_filter_maps, gpu=True, dicts=None, embed_size=100, dropout=0.5):
@@ -228,7 +181,7 @@ class VanillaConv(BaseModel):
 
         #final sigmoid to get predictions
         yhat = F.sigmoid(x)
-        loss = self.get_loss(yhat, target)
+        loss = self._get_loss(yhat, target)
         return yhat, loss, attn
 
     def construct_attention(self, argmax, num_windows):
@@ -257,11 +210,11 @@ class VanillaConv(BaseModel):
 
 class VanillaRNN(BaseModel):
     """
-        General on purpose - can be LSTM or GRU
+        General RNN - can be LSTM or GRU, uni/bi-directional
     """
 
     def __init__(self, Y, embed_file, dicts, rnn_dim, cell_type, num_layers, gpu, embed_size=100, bidirectional=False):
-        super(VanillaRNN, self).__init__(Y, embed_file, dicts, embed_size=embed_size)
+        super(VanillaRNN, self).__init__(Y, embed_file, dicts, embed_size=embed_size, gpu=gpu)
         self.gpu = gpu
         self.rnn_dim = rnn_dim
         self.cell_type = cell_type
@@ -270,9 +223,9 @@ class VanillaRNN(BaseModel):
 
         #recurrent unit
         if self.cell_type == 'lstm':
-            self.rnn = nn.LSTM(self.embed_size, self.rnn_dim/self.num_directions, self.num_layers, bidirectional=bidirectional)
+            self.rnn = nn.LSTM(self.embed_size, floor(self.rnn_dim/self.num_directions), self.num_layers, bidirectional=bidirectional)
         else:
-            self.rnn = nn.GRU(self.embed_size, self.rnn_dim/self.num_directions, self.num_layers, bidirectional=bidirectional)
+            self.rnn = nn.GRU(self.embed_size, floor(self.rnn_dim/self.num_directions), self.num_layers, bidirectional=bidirectional)
         #linear output
         self.final = nn.Linear(self.rnn_dim, Y)
 
@@ -281,7 +234,7 @@ class VanillaRNN(BaseModel):
         self.hidden = self.init_hidden()
 
     def forward(self, x, target, desc_data=None, get_attention=False):
-        #clear hidden state at the start of each batch
+        #clear hidden state, reset batch size at the start of each batch
         self.refresh(x.size()[0])
 
         #embed
@@ -294,23 +247,23 @@ class VanillaRNN(BaseModel):
         last_hidden = last_hidden[-1] if self.num_directions == 1 else last_hidden[-2:].transpose(0,1).contiguous().view(self.batch_size, -1)
         #apply linear layer and sigmoid to get predictions
         yhat = F.sigmoid(self.final(last_hidden))
-        loss = self.get_loss(yhat, target)
+        loss = self._get_loss(yhat, target)
         return yhat, loss, None
 
     def init_hidden(self):
         if self.gpu:
             h_0 = Variable(torch.cuda.FloatTensor(self.num_directions*self.num_layers, self.batch_size,
-                                                  self.rnn_dim/self.num_directions).zero_())
+                                                  floor(self.rnn_dim/self.num_directions)).zero_())
             if self.cell_type == 'lstm':
                 c_0 = Variable(torch.cuda.FloatTensor(self.num_directions*self.num_layers, self.batch_size,
-                                                      self.rnn_dim/self.num_directions).zero_())
+                                                      floor(self.rnn_dim/self.num_directions)).zero_())
                 return (h_0, c_0)
             else:
                 return h_0
         else:
-            h_0 = Variable(torch.zeros(self.num_directions*self.num_layers, self.batch_size, self.rnn_dim/self.num_directions))
+            h_0 = Variable(torch.zeros(self.num_directions*self.num_layers, self.batch_size, floor(self.rnn_dim/self.num_directions)))
             if self.cell_type == 'lstm':
-                c_0 = Variable(torch.zeros(self.num_directions*self.num_layers, self.batch_size, self.rnn_dim/self.num_directions))
+                c_0 = Variable(torch.zeros(self.num_directions*self.num_layers, self.batch_size, floor(self.rnn_dim/self.num_directions)))
                 return (h_0, c_0)
             else:
                 return h_0

@@ -1,1 +1,0 @@
-python ../../learn/training.py ../../mimicdata/mimic2/train.csv ../../mimicdata/mimic2/vocab.csv full cnn_vanilla 200 --filter-size 4 --num-filter-maps 500 --dropout 0.2 --lr 0.003 --embed-file ../../mimicdata/mimic2/processed_full.embed --gpu 
