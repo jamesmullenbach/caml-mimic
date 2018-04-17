@@ -130,7 +130,7 @@ def recall_at_k(yhat_raw, y, k):
     return np.mean(vals)
 
 def precision_at_k(yhat_raw, y, k):
-    #num true labels in top k predictions / num 1 predictions in top k 
+    #num true labels in top k predictions / k
     sortd = np.argsort(yhat_raw)[:,::-1]
     topk = sortd[:,:k]
 
