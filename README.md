@@ -22,7 +22,7 @@ To get started, first edit `constants.py` to point to the directories holding yo
 mimicdata
 |   D_ICD_DIAGNOSES.csv
 |   D_ICD_PROCEDURES.csv
-|   ICD9_descriptions
+|   ICD9_descriptions (already in repo)
 └───mimic2/
 |   |   MIMIC_RAW_DSUMS
 |   |   MIMIC_ICD9_mapping
