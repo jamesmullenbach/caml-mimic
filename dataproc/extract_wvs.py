@@ -23,7 +23,7 @@ def gensim_to_embeddings(wv_file, vocab_file, Y, outfile=None):
             line = line.strip()
             if line != '':
                 vocab.add(line)
-    ind2w = {i:w for i,w in enumerate(sorted(vocab))}
+    ind2w = {i+1:w for i,w in enumerate(sorted(vocab))}
 
     W, words = build_matrix(ind2w, wv)
 
@@ -44,19 +44,14 @@ def build_matrix(ind2w, wv):
     W[0][:] = np.zeros(len(wv.word_vec(wv.index2word[0])))
     for idx, word in tqdm(ind2w.items()):
         if idx >= W.shape[0]:
-            break
-        for i in range(len(wv.index2word)):
-            if word == wv.index2word[i]:
-                W[idx][:] = wv.word_vec(wv.index2word[i])
-                break
+            break    
+        W[idx][:] = wv.word_vec(word)
         words.append(word)
     return W, words
 
 def save_embeddings(W, words, outfile):
     with open(outfile, 'w') as o:
-        #write pad token
-        pad_line = PAD_CHAR + " " + " ".join(["0" for i in range(EMBEDDING_SIZE)])
-        o.write(pad_line + "\n")
+        #pad token already included
         for i in range(len(words)):
             line = [words[i]]
             line.extend([str(d) for d in W[i]])
