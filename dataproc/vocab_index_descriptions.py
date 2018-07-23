@@ -18,7 +18,7 @@ def vocab_index_descriptions(vocab_file, vectors_file):
             line = line.strip()
             if line != '':
                 vocab.add(line)
-    ind2w = {i:w for i,w in enumerate(sorted(vocab))}
+    ind2w = {i+1:w for i,w in enumerate(sorted(vocab))}
     w2ind = {w:i for i,w in ind2w.items()}
     desc_dict = datasets.load_code_descriptions()
         
