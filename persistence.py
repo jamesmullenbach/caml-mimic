@@ -64,8 +64,14 @@ def save_everything(args, metrics_hist_all, model, model_dir, params, criterion,
     if not evaluate:
         #save the model with the best criterion metric
         if not np.all(np.isnan(metrics_hist_all[0][criterion])):
-            if np.nanargmax(metrics_hist_all[0][criterion]) == len(metrics_hist_all[0][criterion]) - 1:
-                #save state dict
+            if criterion == 'loss_dev': 
+                eval_val = np.nanargmin(metrics_hist_all[0][criterion])
+            else:
+                eval_val = np.nanargmax(metrics_hist_all[0][criterion])
+
+            if eval_val == len(metrics_hist_all[0][criterion]) - 1:                
+
+		#save state dict
                 sd = model.cpu().state_dict()
                 torch.save(sd, model_dir + "/model_best_%s.pth" % criterion)
                 if args.gpu:
