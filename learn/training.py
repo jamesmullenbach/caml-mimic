@@ -4,6 +4,7 @@
 import torch
 import torch.optim as optim
 from torch.autograd import Variable
+import torch.nn.functional as F
 
 import csv
 import argparse
@@ -257,6 +258,7 @@ def test(model, Y, epoch, data_path, fold, gpu, version, code_inds, dicts, sampl
         get_attn = samples and (np.random.rand() < 0.02 or (fold == 'test' and testing))
         output, loss, alpha = model(data, target, desc_data=desc_data, get_attention=get_attn)
 
+        output = F.sigmoid(output)
         output = output.data.cpu().numpy()
         losses.append(loss.data[0])
         target_data = target.data.cpu().numpy()
