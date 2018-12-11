@@ -33,13 +33,13 @@ class BaseModel(nn.Module):
             print("loading pretrained embeddings...")
             W = torch.Tensor(extract_wvs.load_embeddings(embed_file))
 
-            self.embed = nn.Embedding(W.size()[0], W.size()[1])
+            self.embed = nn.Embedding(W.size()[0], W.size()[1], padding_idx=0)
             self.embed.weight.data = W.clone()
         else:
             #add 2 to include UNK and PAD
             vocab_size = len(dicts['ind2w'])
-            self.embed = nn.Embedding(vocab_size+2, embed_size)
-
+            self.embed = nn.Embedding(vocab_size+2, embed_size, padding_idx=0)
+            
 
     def _get_loss(self, yhat, target, diffs=None):
         #calculate the BCE
@@ -110,7 +110,7 @@ class ConvAttnPool(BaseModel):
         #description module has its own embedding and convolution layers
         if lmbda > 0:
             W = self.embed.weight.data
-            self.desc_embedding = nn.Embedding(W.size()[0], W.size()[1])
+            self.desc_embedding = nn.Embedding(W.size()[0], W.size()[1], padding_idx=0)
             self.desc_embedding.weight.data = W.clone()
 
             self.label_conv = nn.Conv1d(self.embed_size, num_filter_maps, kernel_size=kernel_size, padding=int(floor(kernel_size/2)))
