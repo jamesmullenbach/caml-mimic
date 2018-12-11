@@ -95,7 +95,7 @@ class ConvAttnPool(BaseModel):
         super(ConvAttnPool, self).__init__(Y, embed_file, dicts, lmbda, dropout=dropout, gpu=gpu, embed_size=embed_size)
 
         #initialize conv layer as in 2.1
-        self.conv = nn.Conv1d(self.embed_size, num_filter_maps, kernel_size=kernel_size, padding=floor(kernel_size/2))
+        self.conv = nn.Conv1d(self.embed_size, num_filter_maps, kernel_size=kernel_size, padding=int(floor(kernel_size/2)))
         xavier_uniform(self.conv.weight)
 
         #context vectors for computing attention as in 2.2
@@ -113,7 +113,7 @@ class ConvAttnPool(BaseModel):
             self.desc_embedding = nn.Embedding(W.size()[0], W.size()[1])
             self.desc_embedding.weight.data = W.clone()
 
-            self.label_conv = nn.Conv1d(self.embed_size, num_filter_maps, kernel_size=kernel_size, padding=floor(kernel_size/2))
+            self.label_conv = nn.Conv1d(self.embed_size, num_filter_maps, kernel_size=kernel_size, padding=int(floor(kernel_size/2)))
             xavier_uniform(self.label_conv.weight)
 
             self.label_fc1 = nn.Linear(num_filter_maps, num_filter_maps)

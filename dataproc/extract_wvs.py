@@ -64,12 +64,12 @@ def load_embeddings(embed_file):
         for line in ef:
             line = line.rstrip().split()
             vec = np.array(line[1:]).astype(np.float)
-            vec = vec / (np.linalg.norm(vec) + 1e-6)
+            vec = vec / float(np.linalg.norm(vec) + 1e-6)
             W.append(vec)
         #UNK embedding, gaussian randomly initialized 
         print("adding unk embedding")
         vec = np.random.randn(len(W[-1]))
-        vec = vec / (np.linalg.norm(vec) + 1e-6)
+        vec = vec / float(np.linalg.norm(vec) + 1e-6)
         W.append(vec)
     W = np.array(W)
     return W
