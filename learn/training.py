@@ -69,7 +69,7 @@ def train_epochs(args, model, optimizer, params, dicts):
     for epoch in range(args.n_epochs):
         #only test on train/test set on very last epoch
         if epoch == 0 and not args.test_model:
-            model_dir = os.path.join(MODEL_DIR, '_'.join([args.model, time.strftime('%b_%d_%H:%M', time.localtime())]))
+            model_dir = os.path.join(MODEL_DIR, '_'.join([args.model, time.strftime('%b_%d_%H:%M:%S', time.localtime())]))
             os.mkdir(model_dir)
         elif args.test_model:
             model_dir = os.path.dirname(os.path.abspath(args.test_model))
@@ -296,7 +296,7 @@ if __name__ == "__main__":
                         help="path to a file containing sorted train data. dev/test splits assumed to have same name format with 'train' replaced by 'dev' and 'test'")
     parser.add_argument("vocab", type=str, help="path to a file holding vocab word list for discretizing words")
     parser.add_argument("Y", type=str, help="size of label space")
-    parser.add_argument("model", type=str, choices=["cnn_vanilla", "rnn", "conv_attn", "multi_conv_attn", "saved"], help="model")
+    parser.add_argument("model", type=str, choices=["cnn_vanilla", "rnn", "conv_attn", "multi_conv_attn", "logreg", "saved"], help="model")
     parser.add_argument("n_epochs", type=int, help="number of epochs to train")
     parser.add_argument("--embed-file", type=str, required=False, dest="embed_file",
                         help="path to a file holding pre-trained embeddings")
@@ -314,6 +314,9 @@ if __name__ == "__main__":
                         help="size of convolution filter to use. (default: 3) For multi_conv_attn, give comma separated integers, e.g. 3,4,5")
     parser.add_argument("--num-filter-maps", type=int, required=False, dest="num_filter_maps", default=50,
                         help="size of conv output (default: 50)")
+    parser.add_argument("--pool", choices=['max', 'avg'], required=False, dest="pool", help="which type of pooling to do (logreg model only)")
+    parser.add_argument("--code-emb", type=str, required=False, dest="code_emb", 
+                        help="point to code embeddings to use for parameter initialization, if applicable")
     parser.add_argument("--weight-decay", type=float, required=False, dest="weight_decay", default=0,
                         help="coefficient for penalizing l2 norm of model weights (default: 0)")
     parser.add_argument("--lr", type=float, required=False, dest="lr", default=1e-3,

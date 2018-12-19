@@ -1,6 +1,7 @@
 """
     Holds PyTorch models
 """
+from gensim.models import KeyedVectors
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -88,10 +89,45 @@ class BaseModel(nn.Module):
             diffs.append(self.lmbda*diff*bi.size()[0])
         return diffs
 
+class BOWPool(BaseModel):
+    """
+        Logistic regression model over average or max-pooled word vector input
+    """
+
+    def __init__(self, Y, embed_file, lmbda, gpu, dicts, pool='max', embed_size=100, dropout=0.5, code_emb=None):
+        super(BOWPool, self).__init__(Y, embed_file, dicts, lmbda, dropout=dropout, gpu=gpu, embed_size=embed_size)
+        self.final = nn.Linear(embed_size, Y)
+        if code_emb:
+            self._code_emb_init(code_emb, dicts)
+        else:
+            xavier_uniform(self.final.weight)
+        self.pool = pool
+
+    def _code_emb_init(self, code_emb, dicts):
+        code_embs = KeyedVectors.load_word2vec_format(code_emb)
+        weights = np.zeros(self.final.weight.size())
+        for i in range(self.Y):
+            code = dicts['ind2c'][i]
+            weights[i] = code_embs[code]
+        self.final.weight.data = torch.Tensor(weights).clone()
+
+    def forward(self, x, target, desc_data=None, get_attention=False):
+        #get embeddings and apply dropout
+        x = self.embed(x)
+        x = self.embed_drop(x)
+        x = x.transpose(1, 2)
+        if self.pool == 'max':
+            import pdb; pdb.set_trace()
+            x = F.max_pool1d(x)
+        else:
+            x = F.avg_pool1d(x)
+        logits = F.sigmoid(self.final(x))
+        loss = self._get_loss(logits, target, diffs)
+        return yhat, loss, None
 
 class ConvAttnPool(BaseModel):
 
-    def __init__(self, Y, embed_file, kernel_size, num_filter_maps, lmbda, gpu, dicts, embed_size=100, dropout=0.5):
+    def __init__(self, Y, embed_file, kernel_size, num_filter_maps, lmbda, gpu, dicts, embed_size=100, dropout=0.5, code_emb=None):
         super(ConvAttnPool, self).__init__(Y, embed_file, dicts, lmbda, dropout=dropout, gpu=gpu, embed_size=embed_size)
 
         #initialize conv layer as in 2.1
@@ -105,6 +141,14 @@ class ConvAttnPool(BaseModel):
         #final layer: create a matrix to use for the L binary classifiers as in 2.3
         self.final = nn.Linear(num_filter_maps, Y)
         xavier_uniform(self.final.weight)
+
+        #initialize with trained code embeddings if applicable
+        if code_emb:
+            self._code_emb_init(code_emb, dicts)
+            #also set conv weights to do sum of inputs
+            weights = torch.eye(self.embed_size).unsqueeze(2).expand(-1,-1,kernel_size)/kernel_size
+            self.conv.weight.data = weights.clone()
+            self.conv.bias.data.zero_()
         
         #conv for label descriptions as in 2.5
         #description module has its own embedding and convolution layers
@@ -118,6 +162,15 @@ class ConvAttnPool(BaseModel):
 
             self.label_fc1 = nn.Linear(num_filter_maps, num_filter_maps)
             xavier_uniform(self.label_fc1.weight)
+
+    def _code_emb_init(self, code_emb, dicts):
+        code_embs = KeyedVectors.load_word2vec_format(code_emb)
+        weights = np.zeros(self.final.weight.size())
+        for i in range(self.Y):
+            code = dicts['ind2c'][i]
+            weights[i] = code_embs[code]
+        self.U.weight.data = torch.Tensor(weights).clone()
+        self.final.weight.data = torch.Tensor(weights).clone()
         
     def forward(self, x, target, desc_data=None, get_attention=True):
         #get embeddings and apply dropout
